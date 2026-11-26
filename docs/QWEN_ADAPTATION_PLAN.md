@@ -122,6 +122,20 @@ Two further rules the generator implements:
   `ask` rule so a credential file is asked for rather than read — the resource is `*.env*` rather than `*.env` so it
   still matches `.env.local`, which is where a Qwen key usually lives.
 
+### Limits the tests pin rather than solve
+
+- **A comment inside a value registration rewrites is lost.** Comments elsewhere in the entry stay, but the
+  replaced member's value has to be written as JSON and JSON has no comments; the tests assert exactly that case.
+- **Qwen's enumerated tool list is a snapshot of the server.** The names are read from the tool definitions at
+  generation time, so a tool added later appears only after the trees are regenerated — which is what CI's
+  `plugin-trees-current` job reports.
+- **Qwen's skill `allowedTools` pre-approves the listed tools** when the skill runs, which is wider than OpenCode's
+  per-call permission prompt. The canonical `tools:` allowlist is the same set for both clients; the difference is
+  the client's behaviour, not the source.
+- **`.qwen/settings.json` is create-only**, because it can hold a user's own keys: writing never overwrites an
+  existing one, so `--check` can report a drift that only the person who wrote the file can fix, and a
+  project-scope registration writes that project's own file, which the committed tree is not meant to match.
+
 ## 5. Naming and packaging (blocks publishing)
 
 `pyproject.toml` is the shipped identity: `name = "claude-patent-creator"`, `[project.scripts]` `patent-creator` and `claude-patent-creator` → `mcp_server.cli:main`; `mcp_server/_version.py:19` `PACKAGE_NAME = "claude-patent-creator"`; `setup.py` hardcoded the package name. `MANIFEST.in` does not include the plugin trees, so a `pip install` ships the MCP server only and the generated workflows exist in a source checkout.

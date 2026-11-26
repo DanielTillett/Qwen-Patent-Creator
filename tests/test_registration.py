@@ -27,16 +27,23 @@ NAME = reg.SERVER_NAME
 
 @pytest.fixture
 def home(tmp_path, monkeypatch):
-    """A home directory, so user-scope paths stay inside tmp_path."""
+    """A home directory, so user-scope paths stay inside tmp_path.
+
+    `XDG_CONFIG_HOME` is honoured for OpenCode, so it has to be redirected with it: with the
+    developer's own value inherited, a user-scope test would write the real config file.
+    """
     monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / ".config"))
     return tmp_path
 
 
-def written(client, scope, base, text):
+def written(client, scope, base, text, newline=None):
     """Write a client config file where that client would look for it."""
     path = reg.config_path(client, scope, base)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
+    # `newline=""` writes the string as it is, so a document written with CRLF is a CRLF file;
+    # the default would translate every `\n` to the platform separator.
+    path.write_text(text, encoding="utf-8", newline=newline)
     return path
 
 
@@ -360,6 +367,229 @@ class TestRoundTrips:
         }
         # A file written for OpenCode is not the shape Claude Code or Qwen Code reads.
         assert reg.read_entry(path, "claude") is None
+
+    def test_an_escaped_quote_does_not_end_a_string(self, home):
+        # An escaped quote is string content rather than the end of the string, so the comment
+        # marker after it is still inside the value. Reading the quote as a closing one would
+        # start a comment at the comma and the document would no longer parse.
+        path = written(
+            "qwen-code", "project", home,
+            '{\n  "mcpServers": {\n    "notes": "escaped ' + chr(92) + chr(34) + ' quote, /* not a comment */",\n'
+            '    "' + NAME + '": { "command": "old" }\n  }\n}\n',
+        )
+        ok, detail = reg.register("qwen-code", "project", PYTHON, SERVER, home)
+        assert ok, detail
+        assert '"escaped ' + chr(92) + chr(34) + ' quote, /* not a comment */"' in path.read_text(encoding="utf-8")
+        assert reg.read_entry(path, "qwen-code") == {"command": str(PYTHON), "args": [str(SERVER)]}
+
+    def test_a_string_value_before_the_brace_is_content_the_separator_follows(self, home):
+        # A comment does not end a member, but a string value does, so the comma that separates
+        # the new member has to go after the string rather than before the closing brace.
+        path = written(
+            "qwen-code", "project", home,
+            '{\n  "mcpServers": {\n    "' + NAME + '": {\n'
+            '      "command": "old", // mine\n'
+            '      "note": "ends here"\n'
+            '    }\n  }\n}\n',
+        )
+        ok, detail = reg.register("qwen-code", "project", PYTHON, SERVER, home)
+        assert ok, detail
+        text = path.read_text()
+        assert '"note": "ends here",' in text, text
+        assert reg.read_entry(path, "qwen-code") == {
+            "command": str(PYTHON),
+            "note": "ends here",
+            "args": [str(SERVER)],
+        }
+
+    def test_a_comment_between_the_last_member_and_the_brace_is_copied_once(self, home):
+        # The comment stays where the user wrote it and is not duplicated by the rewrite, while
+        # the new members go after it.
+        path = written(
+            "qwen-code", "project", home,
+            '{\n  "mcpServers": {\n    "' + NAME + '": {\n'
+            '      "command": "old", // mine\n'
+            '      "env": { "A": "B" }\n'
+            '      /* trailing */\n'
+            '    }\n  }\n}\n',
+        )
+        ok, detail = reg.register("qwen-code", "project", PYTHON, SERVER, home)
+        assert ok, detail
+        text = path.read_text()
+        assert text.count("/* trailing */") == 1, text
+        assert text.index("/* trailing */") < text.index('"args"'), text
+        assert reg.read_entry(path, "qwen-code") == {
+            "command": str(PYTHON),
+            "env": {"A": "B"},
+            "args": [str(SERVER)],
+        }
+
+    def test_a_comment_inside_a_value_that_is_replaced_does_not_survive(self, home):
+        """A comment written inside a member whose value is rewritten is gone, and that is the
+        documented limit: only the comments outside the replaced value are kept.
+
+        The value has to be re-rendered as JSON for the client to read the new command, so there
+        is nowhere to put a comment inside it. A comment in a member this client does not rewrite
+        is not affected and stays.
+        """
+        path = written(
+            "qwen-code", "project", home,
+            '{\n  "mcpServers": {\n    "' + NAME + '": {\n'
+            '      "command": "old", // mine\n'
+            '      "args": [\n        "x" /* inside the replaced value */\n      ]\n'
+            '    }\n  }\n}\n',
+        )
+        ok, detail = reg.register("qwen-code", "project", PYTHON, SERVER, home)
+        assert ok, detail
+        text = path.read_text()
+        assert "/* inside the replaced value */" not in text, text
+        assert "// mine" in text, text
+        assert reg.read_entry(path, "qwen-code") == {"command": str(PYTHON), "args": [str(SERVER)]}
+
+    def test_a_comment_in_a_member_that_is_not_rewritten_stays(self, home):
+        path = written(
+            "qwen-code", "project", home,
+            '{\n  "mcpServers": {\n    "' + NAME + '": {\n'
+            '      "command": "old", // mine\n'
+            '      "env": {\n        "A": "B" /* kept */\n      }\n'
+            '    }\n  }\n}\n',
+        )
+        ok, detail = reg.register("qwen-code", "project", PYTHON, SERVER, home)
+        assert ok, detail
+        text = path.read_text()
+        assert '"A": "B" /* kept */' in text, text
+        assert reg.read_entry(path, "qwen-code") == {
+            "command": str(PYTHON),
+            "env": {"A": "B"},
+            "args": [str(SERVER)],
+        }
+
+    def test_a_trailing_comma_the_user_wrote_still_separates_the_new_member(self, home):
+        # A trailing comma is already a separator, so adding another one before the new member
+        # would leave `,,` and the file would stop parsing.
+        path = written(
+            "qwen-code", "project", home,
+            '{\n  "mcpServers": {\n    "' + NAME + '": {\n'
+            '      "command": "old", // mine\n'
+            '      "env": { "A": "B" },\n'
+            '    }\n  }\n}\n',
+        )
+        ok, detail = reg.register("qwen-code", "project", PYTHON, SERVER, home)
+        assert ok, detail
+        text = path.read_text()
+        assert ",," not in text, text
+        assert reg.read_entry(path, "qwen-code") == {
+            "command": str(PYTHON),
+            "env": {"A": "B"},
+            "args": [str(SERVER)],
+        }
+
+    def test_a_key_inside_a_nested_value_is_not_the_entrys_own_key(self, home):
+        # Only the members at the entry's own level are updated: a nested object that happens to
+        # have a key with the same name is the user's content and stays as written.
+        path = written(
+            "qwen-code", "project", home,
+            '{\n  "mcpServers": {\n    "' + NAME + '": {\n'
+            '      "command": "old", // mine\n'
+            '      "env": { "command": "nested, stays" }\n'
+            '    }\n  }\n}\n',
+        )
+        ok, detail = reg.register("qwen-code", "project", PYTHON, SERVER, home)
+        assert ok, detail
+        text = path.read_text()
+        assert '"command": "nested, stays"' in text, text
+        assert reg.read_entry(path, "qwen-code") == {
+            "command": str(PYTHON),
+            "env": {"command": "nested, stays"},
+            "args": [str(SERVER)],
+        }
+
+    def test_every_occurrence_of_a_repeated_key_is_updated(self, home):
+        # A JSON object that names the same key twice is unusual but parses, and the reader keeps
+        # the last one; updating only the first would leave the value the client actually reads
+        # pointing at the old command.
+        path = written(
+            "qwen-code", "project", home,
+            '{\n  "mcpServers": {\n    "' + NAME + '": {\n'
+            '      "command": "first", // mine\n'
+            '      "command": "second"\n'
+            '    }\n  }\n}\n',
+        )
+        ok, detail = reg.register("qwen-code", "project", PYTHON, SERVER, home)
+        assert ok, detail
+        text = path.read_text()
+        assert '"first"' not in text and '"second"' not in text, text
+        assert reg.read_entry(path, "qwen-code") == {"command": str(PYTHON), "args": [str(SERVER)]}
+
+    def test_a_file_written_with_crlf_stays_crlf(self, home):
+        # Editing one value should not restyle the lines the user did not change, and the newlines
+        # this merge adds have to be written as CRLF too rather than doubled.
+        path = written(
+            "qwen-code", "project", home,
+            '{\r\n  "mcpServers": {\r\n    "' + NAME + '": {\r\n'
+            '      "command": "old", // mine\r\n'
+            '      "env": { "A": "B" }\r\n'
+            '    }\r\n  }\r\n}\r\n',
+            newline="",
+        )
+        ok, detail = reg.register("qwen-code", "project", PYTHON, SERVER, home)
+        assert ok, detail
+        text = path.read_text(encoding="utf-8", newline="")
+        assert text.count("\r\n") == text.count("\n"), text
+        assert "\r\r\n" not in text, text
+        assert reg.read_entry(path, "qwen-code") == {
+            "command": str(PYTHON),
+            "env": {"A": "B"},
+            "args": [str(SERVER)],
+        }
+
+    def test_an_entry_that_is_only_a_comment_is_still_merged(self, home):
+        # An entry with no members has nothing to rewrite, so the new members are inserted and the
+        # comment the user wrote is kept where it was.
+        path = written(
+            "qwen-code", "project", home,
+            '{\n  "mcpServers": {\n    "' + NAME + '": { /* c */ }\n  }\n}\n',
+        )
+        ok, detail = reg.register("qwen-code", "project", PYTHON, SERVER, home)
+        assert ok, detail
+        text = path.read_text()
+        assert "/* c */" in text, text
+        assert reg.read_entry(path, "qwen-code") == {"command": str(PYTHON), "args": [str(SERVER)]}
+
+
+class TestARemoteEntryIsNotOverwritten:
+    """A field the client reads in preference to a command has to be reported, not written over."""
+
+    def test_a_qwen_entry_with_a_url_is_left_as_it_was(self, home):
+        # Qwen Code connects to `httpUrl` and ignores `command`, so writing the command beside the
+        # URL would report success while the client kept using the URL.
+        path = written(
+            "qwen-code", "project", home,
+            '{\n  "mcpServers": {\n    "' + NAME + '": { "httpUrl": "https://example.com/mcp", "command": "old" }\n  }\n}\n',
+        )
+        before = path.read_text()
+        ok, detail = reg.register("qwen-code", "project", PYTHON, SERVER, home)
+        assert not ok and "httpUrl" in detail and "nothing was written" in detail, detail
+        assert path.read_text() == before
+        assert reg.read_entry(path, "qwen-code") == {
+            "httpUrl": "https://example.com/mcp",
+            "command": "old",
+        }
+
+    def test_the_same_entry_is_written_for_opencode_because_it_chooses_by_type(self, home):
+        # OpenCode decides by `type`, which registration rewrites, so a leftover url field does not
+        # win there and the entry can be updated.
+        path = written(
+            "opencode", "project", home,
+            '{\n  "mcp": {\n    "servers": {\n      "' + NAME + '": { "type": "remote", "url": "https://example.com" }\n    }\n  }\n}\n',
+        )
+        ok, detail = reg.register("opencode", "project", PYTHON, SERVER, home)
+        assert ok, detail
+        assert reg.read_entry(path, "opencode") == {
+            "type": "local",
+            "url": "https://example.com",
+            "command": [str(PYTHON), str(SERVER)],
+        }
 
 
 class TestReadEntry:

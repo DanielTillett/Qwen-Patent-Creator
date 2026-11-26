@@ -8,6 +8,8 @@ version lives in pyproject.toml, so a disagreement here would make that guard
 check a file that no longer decides anything.
 """
 
+import re
+import subprocess
 from pathlib import Path
 
 import tomllib
@@ -81,11 +83,27 @@ class TestTheVersionGuardChecksTheRightFile:
         """
         ci = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
         guard = ci.split("jobs:")[1].split("  plugin-trees-current:")[0]
-        # The guard matches the version line, not one formatting of it, so a reformatted
-        # pyproject.toml still trips it.
-        assert "grep -qE '^\\+\\s*version\\s*=\\s*\"[^\"]+\"'" in guard
-        assert "pyproject.toml | grep" in guard
+        # The version is read from the [project] section and compared as a value between the base
+        # revision and HEAD, so a reformatted pyproject.toml or a single-quoted version is still seen.
+        assert 'sed -n \'/^\\[project\\]/,/^\\[/p\' "$1"' in guard
+        assert 'git show "$BASE:pyproject.toml"' in guard
+        assert '[ "$OLD" != "$NEW" ]' in guard
         assert "_version.py" not in guard
+
+    def test_the_guard_needs_an_actual_change_to_the_version_value(self, tmp_path):
+        """A whitespace-only edit to the version line is not a bump, so the guard must still fail."""
+        ci = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+        helper = re.search(r"value\(\) \{[^}]+\}", ci).group(0)
+        base = tmp_path / "base.toml"
+        head = tmp_path / "head.toml"
+        base.write_text('[project]\nversion = "0.4.2"\n[tool.ruff]\n', encoding="utf-8")
+        head.write_text('[project]\nversion  =  "0.4.2"\n[tool.ruff]\n', encoding="utf-8")
+        script = f'{helper}\nOLD=$(value "$1")\nNEW=$(value "$2")\n[ "$OLD" != "$NEW" ]\n'
+        reformatted = subprocess.run(["bash", "-c", script, "bash", str(base), str(head)])
+        assert reformatted.returncode != 0, "the same version written differently is not a bump"
+        head.write_text("[project]\nversion = '0.4.3'\n[tool.ruff]\n", encoding="utf-8")
+        bumped = subprocess.run(["bash", "-c", script, "bash", str(base), str(head)])
+        assert bumped.returncode == 0, "a single-quoted version is read as the version"
 
     def test_generated_trees_are_checked_in_ci(self):
         ci = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")

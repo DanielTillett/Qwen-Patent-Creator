@@ -328,11 +328,11 @@ class TestCriterion7TheCIguardsMatchTheLayout:
         ci = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
         watched = re.search(r"git diff [^\n]*-- skills/ agents/ commands/ hooks/ \.opencode/ \.qwen/", ci)
         assert watched, "the guard must watch the generated trees, not only the canonical source"
-        # The literal is compared as text, not as a pattern, so the assertion states the exact
-        # command the guard runs.
-        assert "grep -qE '^\\+\\s*version\\s*=\\s*\"[^\"]+\"'" in ci, (
-            "the guard must check the version line, not a literal formatting"
-        )
+        # The version is compared as a value between the base revision and HEAD, so a whitespace-only
+        # edit to the version line is not mistaken for a bump and single quotes are read too.
+        assert 'git show "$BASE:pyproject.toml"' in ci
+        assert 'sed -n \'/^\\[project\\]/,/^\\[/p\' "$1"' in ci, "the guard must read the [project] section"
+        assert '[ "$OLD" != "$NEW" ]' in ci, "the guard must compare the version value, not a literal formatting"
 
     def test_lint_ignores_the_generated_trees(self):
         # The generated copies are checked by the generator, not by a formatter, so a formatter

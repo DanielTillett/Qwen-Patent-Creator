@@ -92,6 +92,11 @@ TARGETS = (".opencode", ".qwen")
 # Python's \w under Unicode covers \p{L}, \p{N} and the underscore, so this is the same set.
 QWEN_SKILL_NAME = re.compile(r"^[\w:.-]+$")
 
+# A tool is registered either by its function name or with an explicit one, written with or
+# without spaces, so the scanner matches the decorator as it can appear rather than one spelling.
+TOOL_DECORATOR = re.compile(r"@mcp\.tool\s*\(([^)]*)\)")
+DECORATOR_NAME = re.compile(r"name\s*=\s*[\"']([^\"']+)[\"']")
+
 
 def parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
     """Return the frontmatter fields and the body. Canonical frontmatter is one ``key: value`` per line."""
@@ -126,13 +131,20 @@ def mcp_tool_names(root: pathlib.Path) -> list[str]:
     for path in sorted((root / "mcp_server" / "tools").rglob("*.py")):
         lines = read_text(path).splitlines()
         for index, line in enumerate(lines):
-            if line.strip() != "@mcp.tool()":
+            match = TOOL_DECORATOR.match(line.strip())
+            if not match:
                 continue
-            # The tool name is on the def line, after any decorator between it and the tool decorator.
+            # A tool registered with an explicit name is known to clients by that name, so the
+            # decorator argument is used; otherwise the name is the function's, on the def line
+            # after any decorator written between it and the tool decorator.
+            named = DECORATOR_NAME.match(match.group(1))
+            if named:
+                names.append(named.group(1))
+                continue
             for later in lines[index + 1:index + 6]:
-                match = re.match(r"\s*(?:async\s+)?def (\w+)\(", later)
-                if match:
-                    names.append(match.group(1))
+                def_match = re.match(r"\s*(?:async\s+)?def (\w+)\(", later)
+                if def_match:
+                    names.append(def_match.group(1))
                     break
     return names
 
@@ -153,11 +165,18 @@ def opencode_action(token: str) -> str | None:
     return OPENCODE_TOOLS.get(token)
 
 
+YAML_SCALAR = re.compile(
+    r"[-+]?(?:\d[\d_]*(?:\.\d[\d_]*)?(?:[eE][-+]?\d+)?|0x[0-9a-f]+|\d{4}-\d{2}-\d{2}|"
+    r"true|false|null|yes|no|on|off|y|n)",
+    re.IGNORECASE,
+)
+
+
 def yaml_string(value: str) -> str:
     """Quote a frontmatter value that YAML would read as something other than a string.
 
-    `[test-type]` is a flow sequence, and Qwen Code's command schema requires `argument-hint` to be a
-    string, so an unquoted bracketed hint fails validation and the whole command file is skipped.
+    `[test-type]` is a flow sequence, `123` is a number, and Qwen Code's command schema requires `argument-hint` to be a
+    string, so an unquoted value of either shape fails validation and the whole command file is skipped.
     """
     if (
         not value
@@ -165,6 +184,7 @@ def yaml_string(value: str) -> str:
         or value.startswith("- ")
         or ": " in value
         or value.endswith((":", " #"))
+        or YAML_SCALAR.fullmatch(value)
     ):
         return json.dumps(value)
     return value
@@ -389,10 +409,12 @@ def build(root: pathlib.Path = ROOT) -> dict[pathlib.Path, str]:
 def is_generator_owned(path: pathlib.Path, root: pathlib.Path = ROOT) -> bool:
     """Whether a file inside a generated tree is the generator's own output.
 
-    A generated tree is committed, so it can also hold files the generator did not make: a
-    user's `settings.json`, a notes file, a skill directory the canonical source does not have.
-    Cleaning stale output must not delete those, so only the shapes the generator itself writes
-    are eligible.
+    A generated tree is committed, so it can also hold files the generator did not make: a user's
+    `settings.json`, a notes file added inside a mirrored skill directory. Cleaning stale output
+    must not delete those, so a file is eligible only when the generator can show it wrote it: the
+    shape it writes, and for a skill copy the canonical file it copies. A whole generated skill
+    directory the canonical source no longer has can only be the generator's leftover mirror of a
+    skill that was removed from the source, so that is stale output.
     """
     parts = path.relative_to(root).parts
     if len(parts) < 2 or parts[0] not in TARGETS:
@@ -401,14 +423,22 @@ def is_generator_owned(path: pathlib.Path, root: pathlib.Path = ROOT) -> bool:
     if rest[0] in ("agents", "commands"):
         return path.suffix == ".md"
     if rest[0] == "skills":
-        # A generated skill directory mirrors a canonical skill, so everything under it is the
-        # generator's copy. A directory the canonical source does not have is not something the
-        # generator would ever write, so a file inside it is left alone.
-        if len(rest) < 2 or not (root / "skills" / rest[1]).is_dir():
+        if len(rest) < 2:
             return False
+        skill = rest[1]
         # Qwen Code refuses a skill name its pattern cannot match, so the generator never writes
         # that skill into `.qwen/`, and a file it did not write there is not stale output.
-        return parts[0] == ".opencode" or QWEN_SKILL_NAME.match(rest[1])
+        if parts[0] == ".qwen" and not QWEN_SKILL_NAME.match(skill):
+            return False
+        canonical = root / "skills" / skill
+        if not canonical.is_dir():
+            # A generated skill directory the canonical source does not have can only be the
+            # generator's leftover copy of a skill that was removed from the source.
+            return True
+        # Everything the generator writes in a skill directory is a copy of a file that exists in
+        # the canonical source at the same relative path. A file there with no canonical counterpart
+        # is something a person put there by hand, and cleaning stale output must not delete it.
+        return (canonical / pathlib.Path(*rest[2:])).is_file()
     return path == root / ".qwen" / "settings.json"
 
 
@@ -439,18 +469,24 @@ def main(argv: list[str] | None = None) -> int:
     ]
 
     drifted = []
+    written = []
+    skipped = []
     for path, content in sorted(generated.items()):
         expected = content.encode("utf-8")
+        if create_only(path, root) and path.exists():
+            # An existing settings.json belongs to whoever wrote it, so writing never overwrites it.
+            # `--check` is a verification mode and the committed settings.json is the hooks source
+            # rendered, so it is compared there; otherwise a change to hooks/hooks.json is invisible.
+            skipped.append(path)
+            if args.check and path.read_bytes() != expected:
+                drifted.append(path.relative_to(root))
+            continue
         if not path.exists():
             drifted.append(path.relative_to(root))
             if not args.check:
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(expected)
-            continue
-        if create_only(path, root) and not args.check:
-            # An existing settings.json belongs to whoever wrote it, so writing never overwrites it.
-            # `--check` is a verification mode and the committed settings.json is the hooks source
-            # rendered, so it is compared there; otherwise a change to hooks/hooks.json is invisible.
+                written.append(path)
             continue
         # Compare bytes: a CRLF file is not the same file as the LF content the generator writes,
         # so --check reports it instead of treating the decoded text as equal.
@@ -458,6 +494,7 @@ def main(argv: list[str] | None = None) -> int:
             drifted.append(path.relative_to(root))
             if not args.check:
                 path.write_bytes(expected)
+                written.append(path)
 
     if stale and not args.check:
         for path in stale:
@@ -486,13 +523,14 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{len(kept)} files in the generated trees were not written by the generator and are left alone")
         return 0
 
-    print(f"{len(generated)} files written")
-    if drifted:
-        print(f"{len(drifted)} changed")
+    print(f"{len(written)} files written")
     if stale:
         print(f"{len(stale)} stale files removed")
     if kept:
         print(f"{len(kept)} files in the generated trees not written by the generator, left alone")
+    if skipped:
+        # Counting this file as written would be wrong: writing refuses to overwrite user config.
+        print(f"{len(skipped)} files were left as they were because they are user configuration")
     return 0
 
 

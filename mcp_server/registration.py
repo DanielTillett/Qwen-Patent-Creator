@@ -166,7 +166,11 @@ def register(client: str, scope: str, python_path: Path, server_script: Path,
             return False, f"Could not write {path}: {exc}"
         return True, f"Created {path} with the server registered"
 
-    text = path.read_text(encoding="utf-8")
+    raw = path.read_bytes()
+    text = raw.decode("utf-8")
+    # A file written on Windows keeps its line endings: editing it should not restyle the
+    # lines the user did not change.
+    crlf = "\r\n" in text and text.count("\n") == text.count("\r\n")
     if not text.strip():
         # An empty or whitespace-only file is an empty document, not a parse error.
         document = {name: entry}
@@ -189,7 +193,7 @@ def register(client: str, scope: str, python_path: Path, server_script: Path,
             value = {name: entry}
             for outer in reversed(keys[position + 1:]):
                 value = {outer: value}
-            return _insert_member(text, path, kinds, container, key, value)
+            return _insert_member(text, path, kinds, container, key, value, crlf)
         span = _value_span(text, kinds, found[1])
         if span is None or text[span[0]] != "{":
             return False, f"{path} has a {key} section that is not an object; not editing it"
@@ -197,7 +201,7 @@ def register(client: str, scope: str, python_path: Path, server_script: Path,
 
     existing = _find_key(text, kinds, name, inside=container)
     if existing is None:
-        return _insert_member(text, path, kinds, container, name, entry)
+        return _insert_member(text, path, kinds, container, name, entry, crlf)
 
     value = _value_span(text, kinds, existing[1])
     if value is None:
@@ -205,6 +209,15 @@ def register(client: str, scope: str, python_path: Path, server_script: Path,
     fragment = text[value[0]:value[1]]
     if _entry_matches(fragment, entry):
         return True, f"{path} already registers {name}; left unchanged"
+
+    remote = _remote_field(client, fragment)
+    if remote:
+        # Qwen Code connects to a remote entry by its URL and ignores the command, so writing a
+        # command beside it would report success while the client kept using the URL.
+        return False, (
+            f"{path} registers {name} with {remote}, which this client reads in preference to a "
+            f"command; nothing was written. Remove {remote} to register the local server."
+        )
 
     # Same name, different entry: rewrite only that value, so the comments and
     # the other servers around it stay as the user wrote them. Fields this client
@@ -215,7 +228,8 @@ def register(client: str, scope: str, python_path: Path, server_script: Path,
     if any(kinds[index] == "comment" for index in range(value[0], value[1])):
         # The user wrote comments inside this entry. Re-rendering the whole value would drop
         # them, so substitute only the fields being updated and leave the comments where they
-        # were written.
+        # were written. A comment inside one of the values being replaced is still lost: that
+        # value has to be written as JSON, and JSON has no place for a comment.
         block = _rewrite_object_values(text, kinds, value, {
             key: merged[key] for key in shape_keys(client) if key in merged
         })
@@ -229,7 +243,7 @@ def register(client: str, scope: str, python_path: Path, server_script: Path,
     else:
         block = json.dumps(merged)
     new_text = text[:value[0]] + block + text[value[1]:]
-    return _write(path, text, new_text, f"Updated the existing {name} entry in {path}")
+    return _write(path, text, new_text, f"Updated the existing {name} entry in {path}", crlf)
 
 
 def shape_keys(client: str) -> tuple:
@@ -263,19 +277,34 @@ def _rewrite_object_values(text: str, kinds: list, span: tuple, updates: dict) -
     was; only the value of a key being updated is rewritten. A key the object does not have yet
     is added before the closing brace, after any real content, because a comment cannot end a
     member and the separator has to go between members, not between a member and a comment.
+
+    Only the object's own members are updated: a key with the same name inside a nested value
+    is a different member and is left as the user wrote it. A key written twice at this level is
+    rewritten at every occurrence, because a JSON parser reads one object as the last duplicate
+    wins and updating only the first would leave the value the client actually uses unchanged.
     """
     start, end = span
-    pieces = []
+    pieces = [text[start]]
     seen = set()
     indent = _base_indent(text, start)
-    index = start
+    member_indent = _member_indent(text, start, end)
+    # The pieces written up to the last real content at this level, so a new member can be
+    # inserted where the separator belongs instead of after a trailing comment.
+    content_pieces = list(pieces)
+    depth = 1
+    index = start + 1
     while index < end:
         if kinds[index] == "string":
             string = _string_span(text, index)
+            if depth > 1:
+                # Inside a nested value: copy it, including its escaped characters.
+                pieces.append(text[index:string[1]])
+                index = string[1]
+                continue
             colon = _value_start(text, kinds, string[1])
             if text[colon:colon + 1] == ":":
                 key = json.loads(text[index:string[1]])
-                if key in updates and key not in seen:
+                if key in updates:
                     seen.add(key)
                     pieces.append(text[index:colon + 1])
                     # The value begins after the whitespace between the colon and it, so the span
@@ -285,27 +314,61 @@ def _rewrite_object_values(text: str, kinds: list, span: tuple, updates: dict) -
                     value = _value_span(text, kinds, value_start)
                     pieces.append(text[colon + 1:value_start] or " ")
                     pieces.append(json.dumps(updates[key]))
+                    content_pieces = list(pieces)
                     index = value[1] if value else value_start
                     continue
             pieces.append(text[index:string[1]])
+            if depth == 1:
+                content_pieces = list(pieces)
             index = string[1]
             continue
-        if index == end - 1:
+        char = text[index]
+        if depth == 1 and index == end - 1:
+            # The object's own closing brace, before this character is read as a closer: the
+            # depth has to still be the object's own level here, or the keys the object does not
+            # have yet are never added and the entry keeps the shape the user wrote.
             missing = [key for key in updates if key not in seen]
             if missing:
-                body = "".join(f",\n{indent}  {json.dumps(key)}: {json.dumps(updates[key])}" for key in missing)
-                last, _ = _last_content(text, kinds, start, end)
-                if last in ("", "{"):
-                    body = body[1:]  # the first member needs no separator
-                pieces.append(body)
-            pieces.append(text[index])
+                last, content_end = _last_content(text, kinds, start, end)
+                # A member needs a separator only when it is not the first one, and a trailing
+                # comma the user wrote already separates the new member from the previous one.
+                separator = "" if last in ("", "{", ",") else ","
+                # A comment may sit between the last member and the closing brace: the separator
+                # goes after real content, the new members after the comment, which is copied once.
+                run = text[content_end:index]
+                multiline = "\n" in run
+                comment = ""
+                if any(kinds[i] == "comment" for i in range(content_end, index)):
+                    # A one-line object keeps the spacing the user wrote around its comment; a
+                    # multiline one ends at the comment, so the new members start on a new line.
+                    comment = run if not multiline else run.rstrip()
+                joiner = "\n" + member_indent if multiline else " "
+                rendered = []
+                for key in missing:
+                    block = json.dumps(key) + ": " + json.dumps(updates[key], indent=2 if multiline else None)
+                    rendered.append(joiner + joiner.join(block.splitlines()))
+                pieces = list(content_pieces)
+                pieces.append(separator)
+                pieces.append(comment)
+                # The separator only separates the first new member from the content before it: the
+                # new members themselves need commas between them.
+                pieces.append(",".join(rendered))
+                if multiline:
+                    pieces.append("\n" + indent)
+            pieces.append(char)
             break
-        pieces.append(text[index])
+        if char in "{[":
+            depth += 1
+        elif char in "}]":
+            depth -= 1
+        pieces.append(char)
+        if depth == 1 and kinds[index] is None and not char.isspace():
+            content_pieces = list(pieces)
         index += 1
     return "".join(pieces)
 
 
-def _insert_member(text: str, path: Path, kinds: list, container: tuple, key, value):
+def _insert_member(text: str, path: Path, kinds: list, container: tuple, key, value, crlf: bool = False):
     """Add one member inside an existing object; the rest of the file is untouched."""
     start, end = container
     close = end - 1
@@ -333,22 +396,29 @@ def _insert_member(text: str, path: Path, kinds: list, container: tuple, key, va
             + "\n" + _base_indent(text, start) + text[close:]
         )
 
-    return _write(path, text, new_text, f"Updated {path}")
+    return _write(path, text, new_text, f"Updated {path}", crlf)
 
 
-def _write(path: Path, original: str, new_text: str, detail: str):
+def _write(path: Path, original: str, new_text: str, detail: str, crlf: bool = False):
     """Write only when the result still parses as JSONC."""
     try:
         _parse(new_text)
     except ValueError as exc:
         return False, f"Merging into {path} would make it invalid JSON ({exc}); nothing was written"
+    if crlf:
+        # A CRLF file is read with `newline=""`, so its line endings are already in the string;
+        # converting only the newlines this merge introduces keeps the file CRLF without turning
+        # an existing `\r\n` into `\r\r\n`.
+        new_text = new_text.replace("\r\n", "\n").replace("\n", "\r\n")
     if new_text == original:
         return True, f"{path} unchanged"
     try:
-        path.write_text(new_text, encoding="utf-8")
+        # newline="" keeps the line endings in the string as they are, so a CRLF file stays CRLF.
+        with path.open("w", encoding="utf-8", newline="") as handle:
+            handle.write(new_text)
+        return True, detail
     except OSError as exc:
         return False, f"Could not write {path}: {exc}"
-    return True, detail
 
 
 def _entry_matches(fragment: str, entry: dict) -> bool:
@@ -356,6 +426,24 @@ def _entry_matches(fragment: str, entry: dict) -> bool:
         return _parse(fragment) == entry
     except ValueError:
         return False
+
+
+def _remote_field(client: str, fragment: str) -> str:
+    """The field in an existing entry that makes this client read it as a remote server.
+
+    Qwen Code connects to `httpUrl` and ignores `command`, so a command written beside a URL
+    has no effect and reporting success would be wrong: the user has to remove the URL first.
+    OpenCode chooses by `type`, which registration rewrites, so no leftover field wins there.
+    """
+    try:
+        parsed = _parse(fragment)
+    except ValueError:
+        return ""
+    if not isinstance(parsed, dict):
+        return ""
+    if client == "qwen-code" and "httpUrl" in parsed:
+        return "httpUrl"
+    return ""
 
 
 def _next_significant(text: str, kinds: list, start: int) -> str:
@@ -379,9 +467,13 @@ def _scan(text: str) -> list:
             while index < len(text):
                 kinds[index] = "string"
                 if text[index] == "\\":
+                    # The escaped character is part of the string, whatever it is: an escaped
+                    # quote does not end the string, so the comment or brace after it is read
+                    # as it was written instead of being swallowed into the string.
                     index += 1
                     if index < len(text):
                         kinds[index] = "string"
+                        index += 1
                     continue
                 if text[index] == '"':
                     break
@@ -422,12 +514,18 @@ def _parse(text: str):
 
 
 def _find_key(text: str, kinds: list, key: str, inside: tuple = None):
-    """Position of a key in an object: (key start, value start)."""
+    """Position of a key in an object: (key start, value start).
+
+    When a key appears more than once at this level, the last occurrence is the one a JSON
+    parser keeps, so that is the one returned: editing an earlier duplicate would leave the
+    value the client reads unchanged.
+    """
     span = inside or _root_object(text, kinds)
     if span is None:
         return None
     start, end = span
     depth = 1
+    found = None
     index = start + 1
     while index < end:
         if kinds[index] == "comment" or text[index].isspace():
@@ -438,7 +536,7 @@ def _find_key(text: str, kinds: list, key: str, inside: tuple = None):
             if depth == 1 and text[index + 1:string[1] - 1] == key:
                 after = _value_start(text, kinds, string[1])
                 if after < end and text[after] == ":":
-                    return (index, _value_start(text, kinds, after + 1))
+                    found = (index, _value_start(text, kinds, after + 1))
                 # A string that happens to equal `key` is a value, not a key:
                 # keep walking instead of reporting the object as having no key.
             index = string[1]
@@ -448,7 +546,7 @@ def _find_key(text: str, kinds: list, key: str, inside: tuple = None):
         elif text[index] in "}]":
             depth -= 1
         index += 1
-    return None
+    return found
 
 
 def _value_start(text: str, kinds: list, position: int) -> int:
@@ -530,9 +628,11 @@ def _last_content(text: str, kinds: list, start: int, end: int) -> tuple:
 
     Comments and whitespace are skipped: a comment cannot end a member, so the comma
     that separates a new member from the previous one has to go after real content,
-    not after a comment that trails it.
+    not after a comment that trails it. A string is content: the member that ends the
+    object can be a string value, and the comma belongs after its closing quote.
     """
     for index in range(end - 2, start, -1):
-        if kinds[index] is None and not text[index].isspace():
-            return text[index], index + 1
+        if kinds[index] == "comment" or text[index].isspace():
+            continue
+        return text[index], index + 1
     return "", start + 1

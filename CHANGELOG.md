@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-11-27
+
+### Changed
+- Registration reads a configuration file with `newline=""` and converts only the line endings its own merge
+  introduces, so a CRLF file stays CRLF instead of becoming `\r\r\n`.
+- The JSONC scanner treats a string value as content, so a comment written between the last member and the
+  closing brace stays where the user put it and the new members go after it, written once rather than twice.
+  It also keeps escaped quotes inside a key, tracks nesting depth so a key inside a nested object of the same
+  name is not mistaken for the entry's own key, counts each occurrence of a duplicate key, and accepts the
+  trailing comma JSONC allows.
+- Registering a Qwen Code entry that already points at a URL stops instead of adding a command: Qwen reads the
+  URL in preference to the command, so writing the command and reporting success would be wrong.
+- The generator's tool scan matches `@mcp.tool(name="...")` and a decorator written with spaces, not only a bare
+  `@mcp.tool()`, so a tool named in its decorator appears in the generated tool list.
+- `yaml_string()` quotes a value YAML would read as a number, boolean or date, including a hex-looking name, so
+  frontmatter round-trips as the string the canonical source says.
+- Stale cleanup removes only files the generator can prove it wrote. A skill directory whose canonical source is
+  gone is generator output, but a file inside a directory that still has a canonical counterpart is treated as
+  hand-written and left alone. `main()` reports what it wrote, kept, skipped and removed.
+- The CI version guard compares the version value between the base revision and HEAD, so a reformatted version
+  line is not read as a bump while an actual one is.
+- `docs/QWEN_ADAPTATION_PLAN.md` lists the four limits the tests pin rather than solve.
+
 ## [0.4.1] - 2026-11-27
 
 ### Changed

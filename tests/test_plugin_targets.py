@@ -209,6 +209,15 @@ class TestGeneratedFrontmatterShape:
         # grow quotes it does not need.
         assert gen.yaml_string("already quoted") == "already quoted"
 
+    def test_a_value_yaml_would_read_as_a_number_or_boolean_is_quoted(self):
+        """`123`, `true` and a date are not strings to YAML, so a frontmatter value that looks
+        like one has to be quoted before it is written out."""
+        for value in ("123", "0x1f", "3.5", "2024-01-02", "true", "no", "on", "-4"):
+            assert gen.yaml_string(value) == json.dumps(value), value
+        # A value that only looks like one at the start is still a string.
+        assert gen.yaml_string("2 tools") == "2 tools"
+        assert gen.yaml_string("count: 3") == json.dumps("count: 3")
+
     def test_no_generated_value_is_left_in_a_form_yaml_would_misread(self):
         # The canonical source does have a bracketed hint, so the check proves the generator
         # quotes it rather than passing the ambiguous form through.
@@ -308,6 +317,27 @@ class TestToolMappingPerClient:
         assert tool in names
         assert f"  - mcp__{gen.SERVER_NAME}__{tool}" in gen.qwen_agent(source, "Body", names)
         assert f"  - action: {gen.SERVER_NAME}_*" in gen.opencode_agent(source, "Body")
+
+    def test_the_scanner_reads_the_decorators_the_source_can_write(self, tmp_path):
+        """A tool registered another way than `@mcp.tool()` on its own line still has to be found.
+
+        The tool list is read from the source that registers the tools, so a decorator written with
+        an explicit name, or with spaces, or with another decorator between it and the `def`, would
+        leave a real tool out of the list and the client would refuse calls to it.
+        """
+        tools = tmp_path / "mcp_server" / "tools"
+        tools.mkdir(parents=True)
+        (tools / "shapes.py").write_text(
+            '@mcp.tool(name="named_tool")\n'
+            "def named():\n"
+            "    pass\n\n"
+            "@mcp.tool( )\n"
+            "@other\ndef spaced():\n"
+            "    pass\n",
+            encoding="utf-8",
+        )
+        names = gen.mcp_tool_names(tmp_path)
+        assert names == ["named_tool", "spaced"], names
 
     def test_both_trees_grant_the_same_tools_to_the_plugin_server(self):
         """The two trees have to allow the same set, expressed the way each client can.
@@ -631,10 +661,13 @@ class TestGeneratorRoundTripsTheBytesItWrites:
         root = minimal_canonical_tree(tmp_path)
         monkeypatch.setattr(gen, "ROOT", root)
         gen.main([])
-        stray = root / ".opencode" / "skills" / "a-skill" / "left-over.md"
-        stray.write_text("nothing generates this\n", encoding="utf-8")
+        # A generated skill directory is a mirror of a canonical skill, so a copy whose source is
+        # gone is stale output rather than someone's file.
+        stray = root / ".opencode" / "skills" / "removed-skill"
+        stray.mkdir(parents=True)
+        (stray / "SKILL.md").write_text("nothing generates this\n", encoding="utf-8")
         assert gen.main([]) == 0
-        assert not stray.exists()
+        assert not (stray / "SKILL.md").exists()
 
     def test_check_reports_a_stale_generated_file_without_removing_it(self, tmp_path, monkeypatch):
         """`--check` is a verification mode, so it reports stale files instead of cleaning them up."""
@@ -693,7 +726,10 @@ class TestGeneratorRoundTripsTheBytesItWrites:
         keep = [
             root / ".qwen" / "notes.md",
             root / ".opencode" / "agents" / "README.txt",
-            root / ".opencode" / "skills" / "a-hand-added-skill" / "notes.md",
+            # A file inside a mirrored skill directory is only generator output when the canonical
+            # source has the same file, so a hand-written note here is someone else's.
+            root / ".opencode" / "skills" / "a-skill" / "notes.md",
+            root / ".qwen" / "skills" / "a-skill" / "notes.md",
         ]
         for path in keep:
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -704,27 +740,34 @@ class TestGeneratorRoundTripsTheBytesItWrites:
             assert path.exists(), path
             assert path.read_text(encoding="utf-8") == "not generator output\n", path
 
-    def test_a_markdown_file_in_a_mirrored_skill_directory_is_generator_output(self, tmp_path, monkeypatch):
-        """A skill copy mirrors its canonical directory, so anything inside it comes from the source.
+    def test_a_file_in_a_mirrored_skill_directory_is_generator_output_only_when_it_copies_one(self, tmp_path, monkeypatch):
+        """What makes stale cleanup safe is that the generator can show it wrote the file.
 
-        That is what makes stale cleanup safe: the generator only removes a file whose path it
-        would itself write, and it writes the whole mirror of each canonical skill directory.
-        A directory the canonical source does not have is not something it would write, so a
-        hand-added file there is left alone.
+        A skill copy mirrors its canonical directory, so a file there is generator output only when
+        the canonical source has the same file at the same relative path. A file with no canonical
+        counterpart was put there by hand, while a whole skill directory the canonical source no
+        longer has can only be the leftover mirror of a removed skill, so that is stale output.
         """
         root = minimal_canonical_tree(tmp_path)
         monkeypatch.setattr(gen, "ROOT", root)
         gen.main([])
-        mirrored = root / ".opencode" / "skills" / "a-skill" / "notes.md"
-        orphan = root / ".opencode" / "skills" / "a-hand-added-skill" / "notes.md"
-        for path in (mirrored, orphan):
+        # A copy of a file the generator would write from the canonical source.
+        mirrored = root / ".opencode" / "skills" / "a-skill" / "SKILL.md"
+        # The same skill directory, but this file is not in the canonical source.
+        hand_added = root / ".opencode" / "skills" / "a-skill" / "notes.md"
+        # A generated skill directory with no canonical source at all.
+        orphan_dir = root / ".opencode" / "skills" / "removed-skill"
+        orphan_file = orphan_dir / "SKILL.md"
+        for path in (hand_added, orphan_file):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("text\n", encoding="utf-8")
         assert gen.is_generator_owned(mirrored, root)
-        assert not gen.is_generator_owned(orphan, root)
+        assert not gen.is_generator_owned(hand_added, root)
+        assert gen.is_generator_owned(orphan_file, root)
         assert gen.main([]) == 0
-        assert not mirrored.exists()
-        assert orphan.exists()
+        assert mirrored.exists()
+        assert hand_added.exists()
+        assert not orphan_file.exists()
 
     def test_an_existing_settings_json_is_never_rewritten(self, tmp_path, monkeypatch, capsys):
         """Qwen Code reads .qwen/settings.json as user configuration, so writing never overwrites it."""
@@ -790,10 +833,41 @@ class TestGeneratorRoundTripsTheBytesItWrites:
         removed = root / ".qwen" / "agents" / "gone.md"
         removed.write_text("was generator output\n", encoding="utf-8")
         assert gen.is_generator_owned(removed, root)
+        # A file inside a mirrored skill directory with no canonical counterpart was put there by
+        # hand, and a file outside the shapes the generator writes is not its output: neither may
+        # be cleaned.
+        handwritten = root / ".qwen" / "skills" / "a-skill" / "notes.md"
+        handwritten.write_text("written by hand\n", encoding="utf-8")
+        assert not gen.is_generator_owned(handwritten, root)
         assert not gen.is_generator_owned(root / ".qwen" / "notes.md", root)
         assert gen.main([]) == 0
         assert not removed.exists()
+        assert handwritten.exists()
         assert gen.main(["--check"]) == 0
+
+    def test_the_counts_report_only_the_files_the_run_actually_wrote(self, tmp_path, monkeypatch, capsys):
+        """A file writing refuses to touch cannot be counted as written.
+
+        `settings.json` is user configuration and a hand-written file in a mirrored skill directory
+        is not generator output, so a run that leaves both alone has to say so instead of adding
+        them to the written count.
+        """
+        root = minimal_canonical_tree(tmp_path)
+        monkeypatch.setattr(gen, "ROOT", root)
+        settings = root / ".qwen" / "settings.json"
+        handwritten = root / ".qwen" / "skills" / "a-skill" / "notes.md"
+        settings.parent.mkdir(parents=True, exist_ok=True)
+        handwritten.parent.mkdir(parents=True, exist_ok=True)
+        settings.write_text('{"hooks": {}}\n', encoding="utf-8")
+        handwritten.write_text("written by hand\n", encoding="utf-8")
+
+        assert gen.main([]) == 0
+        out = capsys.readouterr().out
+        assert f"{len(gen.build(root)) - 1} files written" in out, out
+        assert "1 files were left as they were because they are user configuration" in out, out
+        assert "1 files in the generated trees not written by the generator, left alone" in out, out
+        assert settings.read_text(encoding="utf-8") == '{"hooks": {}}\n'
+        assert handwritten.exists()
 
     def test_nested_command_and_skill_paths_survive_the_copy(self, tmp_path, monkeypatch):
         """`commands/team/review.md` is the command /team/review, and a skill resolves its

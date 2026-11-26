@@ -31,8 +31,17 @@ jobs:
             echo "No plugin content changed; guard passes."
             exit 0
           fi
-          if git diff "$BASE"...HEAD -- pyproject.toml | grep -qE '^\+\s*version\s*=\s*"[^"]+"'; then
-            echo "Plugin content changed and the version was bumped; guard passes."
+          # The version value is what matters, so it is compared between the two revisions rather
+          # than matching one formatting: a whitespace-only edit to the version line is not a bump,
+          # and either quoting style is read.
+          value() {
+            sed -n '/^\[project\]/,/^\[/p' "$1" \
+              | sed -n "s/^version[[:space:]]*=[[:space:]]*[\"']\([^\"']*\)[\"'].*/\1/p" | head -1
+          }
+          OLD=$(value <(git show "$BASE:pyproject.toml"))
+          NEW=$(value pyproject.toml)
+          if [ -n "$NEW" ] && [ "$OLD" != "$NEW" ]; then
+            echo "Plugin content changed and the version changed from $OLD to $NEW; guard passes."
             exit 0
           fi
           echo "::error::plugin content changed but the package version did not."
