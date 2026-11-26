@@ -222,7 +222,8 @@ class TestRoundTrips:
         ok, detail = reg.register("qwen-code", "project", PYTHON, SERVER, home)
         assert not ok and "not a JSON object" in detail, detail
         assert path.read_text() == before
-        assert reg.read_entry(path, "qwen-code") is None
+        with pytest.raises(ValueError):
+            reg.read_entry(path, "qwen-code")
 
     def test_an_existing_entry_keeps_the_fields_this_client_does_not_use(self, home):
         # Merging replaces the shape this client reads, not the whole entry: the user's
@@ -534,7 +535,9 @@ class TestRoundTrips:
         )
         ok, detail = reg.register("qwen-code", "project", PYTHON, SERVER, home)
         assert ok, detail
-        text = path.read_text(encoding="utf-8", newline="")
+        # Reading the bytes is what keeps the newlines visible: `Path.read_text(newline=...)` would be
+        # the direct way, but that argument only exists from Python 3.13 and CI runs 3.11.
+        text = path.read_bytes().decode("utf-8")
         assert text.count("\r\n") == text.count("\n"), text
         assert "\r\r\n" not in text, text
         assert reg.read_entry(path, "qwen-code") == {
@@ -556,6 +559,91 @@ class TestRoundTrips:
         assert "/* c */" in text, text
         assert reg.read_entry(path, "qwen-code") == {"command": str(PYTHON), "args": [str(SERVER)]}
 
+    def test_braces_inside_a_comment_do_not_change_the_depth(self, home):
+        # The depth the rewrite counts is the object's own. A brace written inside a comment is text
+        # no parser sees, so counting it would close the entry early and put the new members outside
+        # it, in the middle of the comment.
+        path = written(
+            "qwen-code", "project", home,
+            '{\n  "mcpServers": {\n    "' + NAME + '": {\n'
+            '      "command": "old", /* } not a brace */ "note": "n" // {\n'
+            '    }\n  }\n}\n',
+        )
+        ok, detail = reg.register("qwen-code", "project", PYTHON, SERVER, home)
+        assert ok, detail
+        text = path.read_text()
+        assert "/* } not a brace */" in text and "// {" in text, text
+        assert reg.read_entry(path, "qwen-code") == {
+            "command": str(PYTHON),
+            "note": "n",
+            "args": [str(SERVER)],
+        }
+
+    def test_a_comma_inside_a_value_is_not_read_as_a_trailing_comma(self, home):
+        # Only a comma a JSON parser would read as a separator is trailing, so the one inside the
+        # value has to survive: removing it would change what the client reads.
+        path = written(
+            "qwen-code", "project", home,
+            '{\n  "mcpServers": {\n    "' + NAME + '": {\n'
+            '      "command": "old",\n'
+            '      "note": "a, b"\n'
+            '    }\n  }\n}\n',
+        )
+        ok, detail = reg.register("qwen-code", "project", PYTHON, SERVER, home)
+        assert ok, detail
+        text = path.read_text()
+        assert '"a, b"' in text, text
+        assert reg.read_entry(path, "qwen-code") == {
+            "command": str(PYTHON),
+            "note": "a, b",
+            "args": [str(SERVER)],
+        }
+
+    def test_a_key_written_with_escapes_is_the_same_key_as_the_plain_spelling(self, home):
+        # A JSON parser reads `qw\u0065n-patent-creator` as this server's name, so comparing the raw
+        # spelling would add a second entry for the same key and the client would keep reading the
+        # one it already had.
+        path = written(
+            "qwen-code", "project", home,
+            '{\n  "mcpServers": {\n    "qw\\u0065n-patent-creator": { "command": "old" }\n  }\n}\n',
+        )
+        ok, detail = reg.register("qwen-code", "project", PYTHON, SERVER, home)
+        assert ok, detail
+        text = path.read_text()
+        assert text.count('"qw\\u0065n-patent-creator"') == 1, text
+        assert f'"{NAME}"' not in text, text
+        assert reg.read_entry(path, "qwen-code") == {"command": str(PYTHON), "args": [str(SERVER)]}
+
+    def test_a_byte_order_mark_is_dropped_when_the_file_is_rewritten(self, home):
+        # A JSONC parser does not accept a BOM, so a file with one cannot be read by the client at
+        # all; rewriting it is the only way the entry becomes usable.
+        path = written(
+            "qwen-code", "project", home,
+            "\ufeff" + '{\n  "mcpServers": {\n    "' + NAME + '": { "command": "old" }\n  }\n}\n',
+        )
+        ok, detail = reg.register("qwen-code", "project", PYTHON, SERVER, home)
+        assert ok, detail
+        assert not path.read_text(encoding="utf-8").startswith("\ufeff"), path.read_text(encoding="utf-8")
+        assert reg.read_entry(path, "qwen-code") == {"command": str(PYTHON), "args": [str(SERVER)]}
+
+    def test_a_file_with_only_a_comment_is_an_empty_document(self, home):
+        # A comment carries no value, so there is no document to merge into and nothing to decide
+        # about its shape: the comment is kept and the entry is appended after it.
+        path = written("qwen-code", "project", home, "// nothing here yet\n")
+        ok, detail = reg.register("qwen-code", "project", PYTHON, SERVER, home)
+        assert ok, detail
+        text = path.read_text()
+        assert "// nothing here yet" in text, text
+        assert reg.read_entry(path, "qwen-code") == {"command": str(PYTHON), "args": [str(SERVER)]}
+
+    def test_a_file_that_cannot_be_read_is_reported_not_raised(self, home):
+        # A path the tool cannot read is a refusal the user can act on, not a crash: the entry cannot
+        # be merged into something that is not a file.
+        path = reg.config_path("qwen-code", "project", home)
+        path.mkdir(parents=True)
+        ok, detail = reg.register("qwen-code", "project", PYTHON, SERVER, home)
+        assert not ok and "Could not read" in detail, detail
+
 
 class TestARemoteEntryIsNotOverwritten:
     """A field the client reads in preference to a command has to be reported, not written over."""
@@ -575,6 +663,18 @@ class TestARemoteEntryIsNotOverwritten:
             "httpUrl": "https://example.com/mcp",
             "command": "old",
         }
+
+    def test_a_qwen_entry_with_a_plain_url_is_refused_for_the_same_reason(self, home):
+        # `url` is the other field Qwen Code reads as a remote server, so the same refusal applies to
+        # it; Claude Code reads only `url`, which is why the fields are chosen per client.
+        path = written(
+            "qwen-code", "project", home,
+            '{\n  "mcpServers": {\n    "' + NAME + '": { "url": "https://example.com/sse", "command": "old" }\n  }\n}\n',
+        )
+        before = path.read_text()
+        ok, detail = reg.register("qwen-code", "project", PYTHON, SERVER, home)
+        assert not ok and "url" in detail and "nothing was written" in detail, detail
+        assert path.read_text() == before
 
     def test_the_same_entry_is_written_for_opencode_because_it_chooses_by_type(self, home):
         # OpenCode decides by `type`, which registration rewrites, so a leftover url field does not
@@ -608,6 +708,21 @@ class TestReadEntry:
             "opencode", "user", home,
             '{\n  "mcp": {\n    "servers": {\n      "' + NAME + '": { "command": bad }\n    }\n  }\n}\n',
         )
+        with pytest.raises(ValueError):
+            reg.read_entry(path, "opencode")
+
+    def test_content_that_is_not_an_object_raises_instead_of_looking_absent(self, home):
+        # Verification reports what the file says rather than repairing it; a file that is an array is
+        # not a client configuration, and reading it as "no entry" would hide that from the user.
+        path = written("opencode", "user", home, '[\n  { "mcp": { "servers": {} } }\n]\n')
+        with pytest.raises(ValueError):
+            reg.read_entry(path, "opencode")
+
+    def test_a_file_that_cannot_be_read_raises_instead_of_looking_absent(self, home):
+        # Absent and unreadable are different things to act on: one means the server still has to be
+        # registered, the other means the file cannot be checked at all.
+        path = home / ".config" / "opencode" / "opencode.jsonc"
+        path.mkdir(parents=True)
         with pytest.raises(ValueError):
             reg.read_entry(path, "opencode")
 

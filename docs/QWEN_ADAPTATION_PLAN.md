@@ -135,6 +135,27 @@ Two further rules the generator implements:
 - **`.qwen/settings.json` is create-only**, because it can hold a user's own keys: writing never overwrites an
   existing one, so `--check` can report a drift that only the person who wrote the file can fix, and a
   project-scope registration writes that project's own file, which the committed tree is not meant to match.
+- **The CI plugin guard compares the version as text, so a lower version passes it** when plugin content changes.
+  That is the intended rule for that job: it requires the version to *change*, and a shell step cannot parse a
+  version. Monotonic versions for installed code are enforced by `scripts/check_package_version.py`, which parses
+  versions and refuses a fall.
+- **Stale cleanup only removes files the generator can prove it wrote**, which means a generated file has to have a
+  canonical counterpart. A hand-written file in a generated tree is reported in both modes and never deleted, so
+  `--check` fails on a tree containing one and only the person who wrote it can make the run pass.
+- **`yaml_string()` quotes a value containing `#` after whitespace** because a YAML parser reads it as a comment and
+  truncates the value, which is why the round-trip is checked with a real parser rather than by string comparison.
+  PyYAML is a dev extra, not a runtime dependency, so that test skips where the dev extras are not installed.
+- **`health_check` still swallows a HyDE failure** and reports `ready: false`, while search re-raises in strict mode
+  — including when the expander cannot be built, which is the same failure as a call that fails. A health report may
+  describe an unhealthy component; search may not fall back silently after being asked to show failures.
+- **A remote entry wins over an added command in Qwen Code** (`httpUrl` or `url`), so registration refuses to
+  overwrite one instead of converting it. It cannot tell whether that remote entry points at the fork's server, so
+  a remote entry is reported as a refusal and left for the person who wrote it.
+- **A `pip install` ships the MCP server only**: `MANIFEST.in` does not include the plugin trees, so skills, agents
+  and commands are read from a source checkout, which is why the generated trees are committed.
+- **Open decision, not accepted: Qwen's `allowedTools` pre-approval.** The generated grants include shell plus the
+  whole MCP catalogue and can last the session, which is wider than OpenCode's per-call prompt. The default stays as
+  it is until the grants are narrowed or the wider default is explicitly accepted.
 
 ## 5. Naming and packaging (blocks publishing)
 
@@ -167,7 +188,8 @@ so the first run downloads about 500 MB again; `PATENT_DATA_DIR` can point at an
 4. OpenCode lists the server in `opencode mcp list` as connected, and its tools appear as
    `qwen-patent-creator_*`; Qwen Code lists it under its MCP commands. `manual`: needs an installed client.
    Tests check the names those listings would show — the server name and the tool names as the generator
-   and registration use them.
+   and registration use them. A cold `opencode mcp list` on 2.4.1 returned no tools for the entry
+   (upstream anomalyco/opencode#63053), so the listing half is checked in a real session, not by the suite.
 5. A Qwen-run agent invocation produces the same checker output as the Claude-run one on a fixed fixture,
    and an agent that needs a denied tool fails with a permission error naming the tool. `manual`: needs a live
    agent run. Tests check why it holds — the checkers read no client or model configuration, so the same
@@ -177,9 +199,9 @@ so the first run downloads about 500 MB again; `PATENT_DATA_DIR` can point at an
    `HYDE_API_PROVIDER=openai` with only `OPENAI_API_KEY` uses OpenAI; `HYDE_STRICT=true` surfaces API failures;
    provider resolution is covered by tests without a live API key.
 7. CI guards pass: package version bumped for installed-code changes, plugin version bumped for plugin-content
-   changes, and the generated trees match the canonical source (`--check`). The version guard matches the version
-   line (`grep -qE '^\+\s*version\s*=\s*"[^"]+"'`), not one literal formatting, so a reformatted
-   `pyproject.toml` still trips it.
+   changes, and the generated trees match the canonical source (`--check`). The plugin guard reads the version value
+   from both revisions rather than matching one formatting, so a reformatted `pyproject.toml` or either quoting style
+   still trips it; `scripts/check_package_version.py` additionally refuses a version that falls.
 
 `tests/test_acceptance.py` covers criteria 1-7 as far as a test run can observe them; the halves marked
 `manual` need an installed client or a live agent run and are checked by hand.

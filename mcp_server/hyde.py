@@ -30,6 +30,17 @@ PROVIDER_KEY_ENV = {
     "anthropic": "ANTHROPIC_API_KEY",
 }
 
+STRICT_VALUES = ("1", "true", "yes", "on")
+
+
+def strict_enabled() -> bool:
+    """Whether HYDE_STRICT is set.
+
+    Read as a function rather than only inside the expander because the callers that decide whether
+    to swallow a HyDE failure have to ask the same question, including before an expander exists.
+    """
+    return os.getenv("HYDE_STRICT", "").strip().lower() in STRICT_VALUES
+
 
 class HyDEQueryExpander:
     """Expands queries using Hypothetical Document Embeddings"""
@@ -45,7 +56,7 @@ class HyDEQueryExpander:
         self.api_client = None
         self.local_model = None
         self.api_provider = ""
-        self.strict = os.getenv("HYDE_STRICT", "").strip().lower() in ("1", "true", "yes", "on")
+        self.strict = strict_enabled()
 
         if backend == "auto":
             self._detect_best_backend()

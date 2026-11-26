@@ -110,6 +110,16 @@ except ImportError:
     except ImportError:
         _hyde_enabled = None
 
+# Same reason as above, and the same name: the strict check has to be the one the expander uses,
+# so a caller that decides whether to swallow a HyDE failure cannot read it differently.
+try:
+    from hyde import strict_enabled as _hyde_strict
+except ImportError:
+    try:
+        from mcp_server.hyde import strict_enabled as _hyde_strict
+    except ImportError:
+        _hyde_strict = None
+
 # Import device utilities
 try:
     from utils.device import get_device
@@ -337,22 +347,32 @@ class MPEPIndex:
         self.reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2", device=self.device)  # type: ignore[misc]
 
         # Initialize HyDE query expander
-        self.use_hyde = use_hyde
         self.hyde_expander = None
-        if use_hyde:
-            try:
-                try:
-                    from hyde import HyDEQueryExpander
-                except ImportError:
-                    from mcp_server.hyde import HyDEQueryExpander
+        self.use_hyde = use_hyde and self._init_hyde()
 
-                self.hyde_expander = HyDEQueryExpander(backend="auto")
-                _log_info("HyDE query expansion enabled")
-            except Exception as e:
-                _log_warning(
-                    f"HyDE initialization failed: {e}. Continuing without HyDE.", error=str(e)
-                )
-                self.use_hyde = False
+    def _init_hyde(self) -> bool:
+        """Build the expander and report whether HyDE is on.
+
+        Strict mode means a HyDE failure has to be visible, and an expander that cannot be built is
+        the same failure as a call that fails: turning it off here would make HYDE_STRICT look as
+        though it applied to calls only.
+        """
+        try:
+            try:
+                from hyde import HyDEQueryExpander
+            except ImportError:
+                from mcp_server.hyde import HyDEQueryExpander
+
+            self.hyde_expander = HyDEQueryExpander(backend="auto")
+            _log_info("HyDE query expansion enabled")
+            return True
+        except Exception as e:
+            if _hyde_strict and _hyde_strict():
+                raise
+            _log_warning(
+                f"HyDE initialization failed: {e}. Continuing without HyDE.", error=str(e)
+            )
+            return False
 
         self.chunks = []
         self.metadata = []

@@ -101,8 +101,10 @@ MCP Python SDK 2.x (MCPServer)
 
 ## Skills System
 
-The client automatically activates specialized skills based on the task (OpenCode, Qwen Code or any agent that reads
-`skills/`). These skills provide deep expertise for specific workflows:
+The client automatically activates specialized skills based on the task. Clients read the generated trees
+(`.opencode/skills` and `.qwen/skills`); the canonical `skills/` source is what the generator reads, and CI's
+`plugin-trees-current` job fails if a generated tree no longer matches it. These skills provide deep expertise for
+specific workflows:
 
 | Skill | Activate When | What It Provides |
 |-------|---------------|------------------|
@@ -249,9 +251,14 @@ skills/                  # Specialized skills (17)
 agents/                  # Autonomous agents (13)
 hooks/                   # Event-driven hooks
 scripts/                 # Testing and setup utilities
-data/                    # Index storage (git-ignored)
-pdfs/                    # MPEP/USC/CFR PDFs (git-ignored)
+data/                    # Only a legacy in-tree index store; new installs use the app-data dir below
+pdfs/                    # Only a legacy in-tree PDF store; new installs use the app-data dir below
 ```
+
+Downloaded corpora and the index live in the platform app-data directory (`~/.local/share/qwen-patent-creator/data`
+on Linux/Mac, `%APPDATA%\qwen-patent-creator\data` on Windows, or `PATENT_DATA_DIR`), not in the checkout. The
+in-tree `data/` and `pdfs/` paths are read only when they already contain data, so an install that predates
+`mcp_server/data_paths.py` keeps its downloads without a migration step.
 
 ---
 
@@ -436,10 +443,10 @@ python scripts/test_install.py
 | Item | Location | Description |
 |------|----------|-------------|
 | **MCP Server** | `mcp_server/server.py` | Main entry point |
-| **MPEP Index** | `mcp_server/index/` | FAISS + BM25 index files |
-| **MPEP PDFs** | `pdfs/` | Downloaded USPTO documents |
+| **MPEP Index** | app-data `data/index` (`~/.local/share/qwen-patent-creator/data/index`, or `PATENT_DATA_DIR`) | FAISS + BM25 index files; the in-tree `mcp_server/index/` is read only when it already has data |
+| **MPEP PDFs** | app-data `data/pdfs` | Downloaded USPTO documents; the in-tree `pdfs/` is read only when it already has data |
 | **Dependencies** | `pyproject.toml` | All package requirements |
-| **Configuration** | `.env` | Environment variables |
+| **Configuration** | `~/.config/qwen-patent-creator/config.json`, or `.env` | Saved settings and keys; a real environment variable wins |
 | **CLI Tool** | `mcp_server/cli.py` | `qwen-patent-creator` command |
 | **Registration** | `mcp_server/registration.py` | Per-client MCP registration (claude / opencode / qwen-code) |
 | **Skills** | `skills/` (canonical), `.opencode/skills` and `.qwen/skills` (generated) | Specialized skill documentation |

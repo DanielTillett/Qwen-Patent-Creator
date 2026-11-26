@@ -34,6 +34,7 @@ Run from the repository root (or pass ``--root``), and use ``--check`` in CI.
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import pathlib
 import re
@@ -92,12 +93,6 @@ TARGETS = (".opencode", ".qwen")
 # Python's \w under Unicode covers \p{L}, \p{N} and the underscore, so this is the same set.
 QWEN_SKILL_NAME = re.compile(r"^[\w:.-]+$")
 
-# A tool is registered either by its function name or with an explicit one, written with or
-# without spaces, so the scanner matches the decorator as it can appear rather than one spelling.
-TOOL_DECORATOR = re.compile(r"@mcp\.tool\s*\(([^)]*)\)")
-DECORATOR_NAME = re.compile(r"name\s*=\s*[\"']([^\"']+)[\"']")
-
-
 def parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
     """Return the frontmatter fields and the body. Canonical frontmatter is one ``key: value`` per line."""
     match = FRONTMATTER.match(text)
@@ -126,26 +121,38 @@ def mcp_tool_names(root: pathlib.Path) -> list[str]:
     Both trees have to grant the same set of MCP tools, so the names come from the server rather
     than from a list typed into the generator. Qwen Code can only name tools one at a time, so it
     needs them; OpenCode expresses the same set with one rule for the whole server.
+
+    The decorators are read as syntax rather than as text: a tool decorator inside a comment, an
+    argument that closes on a later line, or a comment between the decorator and the `def` would
+    make a text match read the file wrong, and a tool missing from the list is a tool the client
+    refuses to call.
     """
     names = []
     for path in sorted((root / "mcp_server" / "tools").rglob("*.py")):
-        lines = read_text(path).splitlines()
-        for index, line in enumerate(lines):
-            match = TOOL_DECORATOR.match(line.strip())
-            if not match:
+        try:
+            tree = ast.parse(read_text(path))
+        except SyntaxError:
+            continue  # a file this tool cannot read as Python is not a tool definition
+        found = []
+        for node in ast.walk(tree):
+            # The tools are registered inside a function that takes the server, so the decorators are
+            # not at the top of the file; walking the whole tree is what finds them.
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
-            # A tool registered with an explicit name is known to clients by that name, so the
-            # decorator argument is used; otherwise the name is the function's, on the def line
-            # after any decorator written between it and the tool decorator.
-            named = DECORATOR_NAME.match(match.group(1))
-            if named:
-                names.append(named.group(1))
-                continue
-            for later in lines[index + 1:index + 6]:
-                def_match = re.match(r"\s*(?:async\s+)?def (\w+)\(", later)
-                if def_match:
-                    names.append(def_match.group(1))
-                    break
+            for decorator in node.decorator_list:
+                target = decorator.func if isinstance(decorator, ast.Call) else decorator
+                if not (isinstance(target, ast.Attribute) and target.attr == "tool"):
+                    continue
+                # A tool registered with an explicit name is known to clients by that name, so the
+                # decorator argument is used; otherwise the name is the function's.
+                named = None
+                if isinstance(decorator, ast.Call):
+                    for keyword in decorator.keywords:
+                        if keyword.arg == "name" and isinstance(keyword.value, ast.Constant):
+                            named = keyword.value.value
+                found.append((node.lineno, named or node.name))
+                break
+        names.extend(name for _, name in sorted(found, key=lambda item: item[0]))
     return names
 
 
@@ -176,13 +183,15 @@ def yaml_string(value: str) -> str:
     """Quote a frontmatter value that YAML would read as something other than a string.
 
     `[test-type]` is a flow sequence, `123` is a number, and Qwen Code's command schema requires `argument-hint` to be a
-    string, so an unquoted value of either shape fails validation and the whole command file is skipped.
+    string, so an unquoted value of either shape fails validation and the whole command file is skipped. A `#` after a
+    space is read as the start of a comment, so the value would be truncated at it.
     """
     if (
         not value
         or value[0] in "?|>@`!&*%#[{'\"&"
         or value.startswith("- ")
         or ": " in value
+        or re.search(r"\s#", value)
         or value.endswith((":", " #"))
         or YAML_SCALAR.fullmatch(value)
     ):
@@ -406,40 +415,45 @@ def build(root: pathlib.Path = ROOT) -> dict[pathlib.Path, str]:
     return files
 
 
+def canonical_counterpart(path: pathlib.Path, root: pathlib.Path = ROOT) -> pathlib.Path | None:
+    """The canonical file this file in a generated tree is a copy of, or ``None``.
+
+    The generator can only claim a file it can trace back to the canonical source. A file with no
+    counterpart there is something a person put in a generated tree, and the generator has no way to
+    tell its own earlier output from that, so it must not delete it.
+    """
+    parts = path.relative_to(root).parts
+    if len(parts) < 2 or parts[0] not in TARGETS:
+        return None
+    rest = parts[1:]
+    if rest[0] in ("agents", "commands"):
+        if path.suffix != ".md":
+            return None
+        return root / rest[0] / path.name
+    if rest[0] == "skills":
+        if len(rest) < 2:
+            return None
+        skill = rest[1]
+        # Qwen Code refuses a skill name its pattern cannot match, so the generator never writes that
+        # skill into `.qwen/`, and a file there is not its output.
+        if parts[0] == ".qwen" and not QWEN_SKILL_NAME.match(skill):
+            return None
+        return root / "skills" / skill / pathlib.Path(*rest[2:])
+    if path == root / ".qwen" / "settings.json":
+        return root / "hooks" / "hooks.json"
+    return None
+
+
 def is_generator_owned(path: pathlib.Path, root: pathlib.Path = ROOT) -> bool:
     """Whether a file inside a generated tree is the generator's own output.
 
     A generated tree is committed, so it can also hold files the generator did not make: a user's
-    `settings.json`, a notes file added inside a mirrored skill directory. Cleaning stale output
-    must not delete those, so a file is eligible only when the generator can show it wrote it: the
-    shape it writes, and for a skill copy the canonical file it copies. A whole generated skill
-    directory the canonical source no longer has can only be the generator's leftover mirror of a
-    skill that was removed from the source, so that is stale output.
+    `settings.json`, a notes file or an entire skill added inside a mirrored skill directory. Cleaning
+    stale output must not delete those, so a file is eligible only when it has the shape the generator
+    writes for it *and* a canonical counterpart it was copied from.
     """
-    parts = path.relative_to(root).parts
-    if len(parts) < 2 or parts[0] not in TARGETS:
-        return False
-    rest = parts[1:]
-    if rest[0] in ("agents", "commands"):
-        return path.suffix == ".md"
-    if rest[0] == "skills":
-        if len(rest) < 2:
-            return False
-        skill = rest[1]
-        # Qwen Code refuses a skill name its pattern cannot match, so the generator never writes
-        # that skill into `.qwen/`, and a file it did not write there is not stale output.
-        if parts[0] == ".qwen" and not QWEN_SKILL_NAME.match(skill):
-            return False
-        canonical = root / "skills" / skill
-        if not canonical.is_dir():
-            # A generated skill directory the canonical source does not have can only be the
-            # generator's leftover copy of a skill that was removed from the source.
-            return True
-        # Everything the generator writes in a skill directory is a copy of a file that exists in
-        # the canonical source at the same relative path. A file there with no canonical counterpart
-        # is something a person put there by hand, and cleaning stale output must not delete it.
-        return (canonical / pathlib.Path(*rest[2:])).is_file()
-    return path == root / ".qwen" / "settings.json"
+    counterpart = canonical_counterpart(path, root)
+    return counterpart is not None and counterpart.is_file()
 
 
 def create_only(path: pathlib.Path, root: pathlib.Path = ROOT) -> bool:
@@ -455,12 +469,6 @@ def main(argv: list[str] | None = None) -> int:
     root = pathlib.Path(args.root).resolve()
 
     generated = build(root)
-    stale = [
-        path
-        for target in TARGETS
-        for path in (root / target).rglob("*")
-        if path.is_file() and path not in generated and is_generator_owned(path, root)
-    ]
     kept = [
         path
         for target in TARGETS
@@ -496,12 +504,8 @@ def main(argv: list[str] | None = None) -> int:
                 path.write_bytes(expected)
                 written.append(path)
 
-    if stale and not args.check:
-        for path in stale:
-            path.unlink()
-
     if args.check:
-        problems = drifted + [p.relative_to(root) for p in stale]
+        problems = drifted + [p.relative_to(root) for p in kept]
         if problems:
             print(
                 f"{len(problems)} generated files do not match the canonical source; "
@@ -509,6 +513,11 @@ def main(argv: list[str] | None = None) -> int:
             )
             for path in sorted(problems):
                 print(f"  {path}")
+            if kept:
+                # A file the generator cannot trace to the canonical source is not something
+                # regenerating fixes: it is either a stale copy of a source that was removed, which has
+                # to be deleted by hand, or someone's own file that has to move out of the tree.
+                print("  Files with no canonical counterpart are not rewritten by the generator.")
             if pathlib.Path(".qwen/settings.json") in problems:
                 # Explaining this one is what makes the check actionable: settings.json is compared
                 # because the committed copy is the hooks source rendered, but writing never
@@ -519,15 +528,19 @@ def main(argv: list[str] | None = None) -> int:
                 )
             return 1
         print(f"{len(generated)} generated files are up to date")
-        if kept:
-            print(f"{len(kept)} files in the generated trees were not written by the generator and are left alone")
         return 0
 
     print(f"{len(written)} files written")
-    if stale:
-        print(f"{len(stale)} stale files removed")
     if kept:
-        print(f"{len(kept)} files in the generated trees not written by the generator, left alone")
+        # The generator only writes what it can trace to the canonical source, so a file in a generated
+        # tree it cannot account for is reported rather than deleted: it may be someone's own file, and
+        # deleting content the tool cannot prove it wrote is not a repair.
+        print(
+            f"{len(kept)} files in the generated trees have no canonical counterpart and were left "
+            "alone; remove them if they are stale copies of removed sources"
+        )
+        for path in sorted(kept):
+            print(f"  {path.relative_to(root)}")
     if skipped:
         # Counting this file as written would be wrong: writing refuses to overwrite user config.
         print(f"{len(skipped)} files were left as they were because they are user configuration")

@@ -226,8 +226,10 @@ a few deliberate steps rather than an automatic migration:
    mkdir -p ~/.local/share/qwen-patent-creator
    cp -R ~/.local/share/claude-patent-creator/data ~/.local/share/qwen-patent-creator/
    ```
-   Skipping the data copy is fine; setup rebuilds the index, which takes 5 to 45 minutes. Environment keys such as
-   `QWEN_API_KEY` are read from the environment or a `.env` file, not from `config.json`.
+   Skipping the data copy is fine; setup rebuilds the index, which takes 5 to 45 minutes. Keys such as
+   `QWEN_API_KEY` are read from a real environment variable, a `.env` file, or the copied `config.json` — the
+   config file is bridged into the environment at startup, so a saved key travels with the copy, and an
+   environment variable always wins over the file.
 
 ## What Can I Actually Do With This?
 

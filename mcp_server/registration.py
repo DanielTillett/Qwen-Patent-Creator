@@ -28,13 +28,19 @@ SERVER_NAME = "qwen-patent-creator"
 
 
 def resolve_client(explicit: str = "auto") -> str:
-    """The client to register with: an explicit name, else the first installed CLI."""
+    """The client to register with: an explicit name, else the first installed CLI.
+
+    The order is Qwen, OpenCode, Claude Code: this fork is Qwen-first, so a machine
+    with more than one client installed should get the Qwen entry when the user did
+    not say which client they meant. Claude is still a client someone can name, so
+    it stays last rather than being removed from the list.
+    """
     name = (explicit or "auto").strip().lower()
     if name in CLIENTS:
         return name
     if name != "auto":
         raise ValueError(f"Unknown client: {name}. Use one of {', '.join(CLIENTS)}, or 'auto'.")
-    for command, client in (("claude", "claude"), ("opencode", "opencode"), ("qwen", "qwen-code")):
+    for command, client in (("qwen", "qwen-code"), ("opencode", "opencode"), ("claude", "claude")):
         if _cli_available(command):
             return client
     return "none"
@@ -112,14 +118,23 @@ def read_entry(path: Path, client: str, name: str = SERVER_NAME):
 
     Read-only: verification reports what the file says and never repairs it. A
     value that cannot be parsed raises, so a malformed file is shown to the user
-    rather than silently treated as missing.
+    rather than silently treated as missing. A file that has content but is not an
+    object is malformed in the same way, and so is one the tool cannot read: both
+    raise rather than looking absent, because "no entry" and "broken file" are
+    different things to act on.
     """
-    if not path.exists():
+    try:
+        text = path.read_text(encoding="utf-8-sig")
+    except FileNotFoundError:
         return None
-    text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ValueError(f"Could not read {path}: {exc}") from exc
+
     kinds = _scan(text)
     root = _root_object(text, kinds)
     if root is None:
+        if _has_content(text, kinds):
+            raise ValueError(f"{path} is not a JSON object")
         return None
 
     containers = [root]
@@ -166,23 +181,37 @@ def register(client: str, scope: str, python_path: Path, server_script: Path,
             return False, f"Could not write {path}: {exc}"
         return True, f"Created {path} with the server registered"
 
-    raw = path.read_bytes()
-    text = raw.decode("utf-8")
+    try:
+        raw = path.read_bytes()
+    except OSError as exc:
+        # A file that cannot be read is reported, not raised: a traceback from a config file the
+        # tool was asked to edit reads as a crash rather than as a refusal.
+        return False, f"Could not read {path}: {exc}"
+    # A byte-order mark is dropped when the file is rewritten. JSONC parsers do not accept one,
+    # so a file that had it could not be read by the client anyway; refusing to edit it would
+    # only leave the user with a file nothing can open.
+    text = raw.decode("utf-8-sig")
     # A file written on Windows keeps its line endings: editing it should not restyle the
     # lines the user did not change.
     crlf = "\r\n" in text and text.count("\n") == text.count("\r\n")
-    if not text.strip():
-        # An empty or whitespace-only file is an empty document, not a parse error.
+
+    kinds = _scan(text)
+    if not _has_content(text, kinds):
+        # Nothing but comments and whitespace: there is no document to merge into, so what the
+        # user wrote is kept and the entry is appended after it. A comment-only file is treated
+        # as an empty document, because a comment is not content.
         document = {name: entry}
         for key in reversed(keys):
             document = {key: document}
+        body = json.dumps(document, indent=2) + "\n"
+        if crlf:
+            body = body.replace("\n", "\r\n")
         try:
-            path.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+            path.write_text(text + body, encoding="utf-8", newline="")
         except OSError as exc:
             return False, f"Could not write {path}: {exc}"
-        return True, f"Wrote {path} (it was empty)"
+        return True, f"Wrote {path} (it had no document yet)"
 
-    kinds = _scan(text)
     container = _root_object(text, kinds)
     if container is None:
         return False, f"{path} is not a JSON object; not editing it"
@@ -357,9 +386,9 @@ def _rewrite_object_values(text: str, kinds: list, span: tuple, updates: dict) -
                     pieces.append("\n" + indent)
             pieces.append(char)
             break
-        if char in "{[":
+        if char in "{[" and kinds[index] is None:
             depth += 1
-        elif char in "}]":
+        elif char in "}]" and kinds[index] is None:
             depth -= 1
         pieces.append(char)
         if depth == 1 and kinds[index] is None and not char.isspace():
@@ -431,18 +460,22 @@ def _entry_matches(fragment: str, entry: dict) -> bool:
 def _remote_field(client: str, fragment: str) -> str:
     """The field in an existing entry that makes this client read it as a remote server.
 
-    Qwen Code connects to `httpUrl` and ignores `command`, so a command written beside a URL
-    has no effect and reporting success would be wrong: the user has to remove the URL first.
-    OpenCode chooses by `type`, which registration rewrites, so no leftover field wins there.
+    A file-configured client chooses its transport from the URL when one is present and ignores the
+    command, so writing a command beside a URL would report success while the client kept using the
+    URL: the user has to remove the field first. Qwen Code reads `httpUrl` or `url`; Claude Code
+    reads `url` and its `type` is not part of the shape this tool rewrites for it. OpenCode chooses
+    by `type`, which registration rewrites, so no leftover field wins there.
     """
+    fields = {"qwen-code": ("httpUrl", "url"), "claude": ("url",)}.get(client, ())
     try:
         parsed = _parse(fragment)
     except ValueError:
         return ""
     if not isinstance(parsed, dict):
         return ""
-    if client == "qwen-code" and "httpUrl" in parsed:
-        return "httpUrl"
+    for field in fields:
+        if field in parsed:
+            return field
     return ""
 
 
@@ -453,6 +486,17 @@ def _next_significant(text: str, kinds: list, start: int) -> str:
             continue
         return text[index]
     return ""
+
+
+def _has_content(text: str, kinds: list) -> bool:
+    """Whether the document has anything a JSON parser would read.
+
+    Comments and whitespace carry no value, so a file holding only them is an empty
+    document rather than a malformed one: the entry can be appended without deciding
+    what shape the file should have had.
+    """
+    return any(kinds[i] == "string" or (kinds[i] is None and not text[i].isspace())
+               for i in range(len(text)))
 
 
 def _scan(text: str) -> list:
@@ -506,7 +550,13 @@ def _parse(text: str):
     kinds = _scan(text)
     cleaned = []
     for index, char in enumerate(text):
-        if kinds[index] == "comment" or (char == "," and _next_significant(text, kinds, index) in ("}", "]")):
+        # Only a comma the parser would read as a separator is a trailing one. A comma inside a
+        # string is part of the value, so removing it would change what the client reads.
+        is_comment = kinds[index] == "comment"
+        is_trailing_comma = (
+            kinds[index] is None and char == "," and _next_significant(text, kinds, index) in ("}", "]")
+        )
+        if is_comment or is_trailing_comma:
             cleaned.append(" ")
         else:
             cleaned.append(char)
@@ -533,7 +583,7 @@ def _find_key(text: str, kinds: list, key: str, inside: tuple = None):
             continue
         if kinds[index] == "string":
             string = _string_span(text, index)
-            if depth == 1 and text[index + 1:string[1] - 1] == key:
+            if depth == 1 and _decoded_key(text, index, string[1]) == key:
                 after = _value_start(text, kinds, string[1])
                 if after < end and text[after] == ":":
                     found = (index, _value_start(text, kinds, after + 1))
@@ -580,6 +630,18 @@ def _value_span(text: str, kinds: list, start: int):
                     return (start, index + 1)
         index += 1
     return None
+
+
+def _decoded_key(text: str, start: int, end: int) -> str:
+    """The key a JSON parser reads from a quoted string, escapes included.
+
+    Comparing the raw spelling would miss `qw\\u0065n-patent-creator`, which names the same key as
+    the plain form, and the tool would add a second entry while the client keeps reading the first.
+    """
+    try:
+        return json.loads(text[start:end])
+    except ValueError:
+        return ""
 
 
 def _string_span(text: str, start: int):

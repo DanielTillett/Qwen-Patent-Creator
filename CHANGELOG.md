@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-11-27
+
+### Fixed
+- Registration counts nesting only for braces a parser would read, so a `{` or `}` written inside a comment in the
+  entry's object no longer closes the value span early and corrupts the rewrite.
+- A key is compared as the name a parser reads, so `qw\u0065n-patent-creator` is the same key as the plain spelling
+  instead of getting a second entry while the client keeps reading the first one.
+- Only a comma the parser would read as a separator is treated as a trailing one; a comma inside a string value is
+  part of the value and stays.
+- A file with content that is not an object, and a file that cannot be read, are reported as problems instead of
+  looking like a missing entry. `register()` reports an unreadable file as a refusal rather than raising, and drops a
+  byte-order mark when it rewrites, since a JSONC parser cannot read one.
+- A file holding only comments is an empty document rather than a malformed one: the comments stay where they are
+  and the entry is appended after them.
+- The Qwen Code remote check refuses a plain `url` as well as `httpUrl`, because Qwen reads the URL in preference to
+  the command, so a remote entry is no longer overwritten and a success is not reported for a change no client reads.
+- The generator reads the tool files as Python syntax rather than as text, so a decorator inside a comment, an
+  argument that closes on a later line, and tools registered inside `def register(mcp)` are all handled: the tool
+  list is the set the server actually exposes.
+- Stale cleanup deletes nothing it cannot trace to the canonical source. A file in a generated tree with no
+  counterpart there is reported in both modes instead of being removed, which is what `--check` now fails on.
+- `yaml_string()` quotes a value containing a `#` after whitespace, which a YAML parser reads as the start of a
+  comment and would truncate at.
+- A strict HyDE failure now propagates from the index build as well as from a call, and the search caller reports the
+  real HyDE failure rather than a NameError when the import of the expander is what failed.
+- The CRLF test reads the file as bytes, so it runs on Python 3.11, where `Path.read_text(newline=...)` does not exist.
+
+### Changed
+- `resolve_client()` tries Qwen Code first, then OpenCode, then Claude Code, so a machine with more than one client
+  installed gets the fork's own client when the user did not name one.
+- Docs: the README says a saved key travels with a copy through `config.json`, which is bridged into the environment
+  at startup with an environment variable winning; `CLAUDE.md` imports `AGENTS.md` with `@` so Claude Code loads the
+  one copy; the key file locations name the app-data index directory rather than the in-tree legacy fallback.
+- `docs/QWEN_ADAPTATION_PLAN.md` records the limits the tests pin rather than solve, including the CI plugin guard
+  comparing the version as text, and notes that OpenCode's cold `mcp list` returned no tools on 2.4.1.
+
+### Added
+- Tests for the JSONC edge cases (braces inside a comment, a comma inside a value, an escaped key spelling, a BOM, a
+  comment-only file, a file that cannot be read, a Qwen `url` remote entry), for the generator reporting files it
+  cannot account for instead of deleting them, for `yaml_string()` round-tripping through a real YAML parser, and for
+  strict HyDE at index build. PyYAML is a dev extra so the round-trip test runs in CI.
+
 ## [0.4.2] - 2026-11-27
 
 ### Changed

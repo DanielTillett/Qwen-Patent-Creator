@@ -75,6 +75,16 @@ def fake_openai(monkeypatch):
     return module
 
 
+@pytest.fixture
+def no_local_model(monkeypatch):
+    """Make the local-model branch unavailable, so `auto` decides between API and rules only."""
+
+    def fail(self):
+        raise ValueError("local model disabled for this test")
+
+    monkeypatch.setattr(hyde.HyDEQueryExpander, "_init_local_backend", fail)
+
+
 class TestProviderSelection:
     def test_qwen_key_wins_when_more_than_one_key_is_set(self, monkeypatch, fake_openai):
         monkeypatch.setenv("QWEN_API_KEY", "sk-qwen")
@@ -187,6 +197,46 @@ class TestStrictMode:
         result = expander.expand_query("antecedent basis")
         assert result and result[0] == "antecedent basis"
         assert expander.backend == "qwen"
+
+    def test_a_strict_failure_at_initialization_is_not_swallowed(self, monkeypatch, no_local_model):
+        # The search engine catches an expander that cannot be built, so strict mode has to reach
+        # past that catch: otherwise HYDE_STRICT reads as "strict for calls, quiet for setup", and
+        # a user who asked for failures to be visible gets search without HyDE.
+        monkeypatch.setenv("HYDE_BACKEND", "api")
+        monkeypatch.setenv("HYDE_STRICT", "true")
+        engine = mpep_search.MPEPIndex.__new__(mpep_search.MPEPIndex)
+        engine.hyde_expander = None
+        with pytest.raises(ValueError, match="HyDE API backend is unavailable"):
+            engine._init_hyde()
+
+    def test_without_strict_an_expander_that_cannot_be_built_still_searches(self, monkeypatch, no_local_model):
+        # The catch is what makes HyDE optional, so it has to keep working when strict is off.
+        # Same setup as the test above, minus HYDE_STRICT: an opted-in API that cannot be built
+        # degrades to rule-based expansion instead of stopping the search.
+        monkeypatch.setenv("HYDE_BACKEND", "api")
+        engine = mpep_search.MPEPIndex.__new__(mpep_search.MPEPIndex)
+        engine.hyde_expander = None
+        assert engine._init_hyde() is False
+        assert engine.hyde_expander is None
+
+    def test_the_strict_answer_is_the_same_one_the_expander_uses(self, monkeypatch):
+        # The caller decides whether a HyDE failure is swallowed, so it has to answer the same
+        # question the expander answers, and it has to be able to ask before an expander exists.
+        monkeypatch.setenv("HYDE_STRICT", "yes")
+        assert mpep_search._hyde_strict is not None
+        assert mpep_search._hyde_strict() is True and hyde.strict_enabled() is True
+
+    def test_a_strict_failure_is_still_reported_when_the_import_of_the_expander_fails(self, monkeypatch):
+        # If the handler asked about strict mode through a name imported inside its own try block,
+        # a failed import would replace the real HyDE failure with a NameError and the caller would
+        # see the wrong reason. The check is bound at module level, so it is available here.
+        monkeypatch.setenv("HYDE_STRICT", "true")
+        for name in ("hyde", "mcp_server.hyde"):
+            monkeypatch.setitem(sys.modules, name, types.ModuleType(name))
+        engine = mpep_search.MPEPIndex.__new__(mpep_search.MPEPIndex)
+        engine.hyde_expander = None
+        with pytest.raises(ImportError):
+            engine._init_hyde()
 
     def test_auto_is_an_accepted_provider_choice(self):
         # The documented way to leave provider selection to key order is an empty
