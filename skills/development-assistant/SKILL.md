@@ -78,7 +78,11 @@ Python code printing user-facing commands must use `mcp_server.cli_command.rende
 
 ## Plugin commands and repository map
 
-Create new command Markdown files under the root `commands/` directory. For example, a new `commands/your-command.md` should have `description` frontmatter followed by workflow instructions. A `.claude/commands/` file would be local to a project rather than part of this plugin.
+Create new command Markdown files under the root `commands/` directory, which is the single source of
+truth: `scripts/build_plugin_targets.py` copies each command to the per-client trees. For example, a new
+`commands/your-command.md` should have `description` frontmatter followed by workflow instructions. A file
+placed directly in a client's own directory — `.opencode/commands/your-command.md` or
+`.qwen/commands/your-command.md` — would be local to a project rather than part of this plugin.
 
 | Work | Existing implementation |
 |---|---|
@@ -91,6 +95,6 @@ Create new command Markdown files under the root `commands/` directory. For exam
 | Monitoring and logging | `mcp_server/monitoring.py`, `mcp_server/logging_config.py` |
 | Automated regression tests | `tests/` |
 | Manual diagnostics | `scripts/` |
-| Plugin packaging | `.claude-plugin/plugin.json`, `commands/`, `skills/`, `agents/` |
+| Plugin layer | `agents/`, `commands/`, `skills/`, and the generated `.opencode/` and `.qwen/` trees |
 
 Read the current implementation before extending it, write tests for observable behavior, run pytest and Ruff, and document limitations alongside results.

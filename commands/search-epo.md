@@ -1,19 +1,7 @@
 ---
 description: Search European patents using EPO OPS API and BigQuery (100M+ patents filtered for EP)
+tools: check_epo_api_status, check_google_patents_status, check_bigquery_status, search_epo_patents, get_epo_patent, get_epo_patent_family, search_patents_google, search_patents_bigquery, get_patent_bigquery, get_patents_bigquery, search_patents_by_cpc_bigquery
 argument-hint: "query [optional: --cpc CODE] [--year-range START-END] [--applicant NAME] [--limit N]"
-allowed-tools:
-  - check_epo_api_status
-  - check_google_patents_status
-  - check_bigquery_status
-  - search_epo_patents
-  - get_epo_patent
-  - get_epo_patent_family
-  - search_patents_google
-  - search_patents_bigquery
-  - get_patent_bigquery
-  - get_patents_bigquery
-  - search_patents_by_cpc_bigquery
-model: claude-sonnet-4-5-20250929
 ---
 
 # EPO Patent Search

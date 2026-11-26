@@ -1,11 +1,11 @@
 ---
 name: setup-assistant
-description: Guides through installation, configuration, and first-time setup of the Claude Patent Creator system.
+description: Guides through installation, configuration, and first-time setup of the Qwen Patent Creator system.
 ---
 
 # Setup Assistant Skill
 
-Expert system for installing, configuring, and setting up the Claude Patent Creator MCP server.
+Expert system for installing, configuring, and setting up the Qwen Patent Creator MCP server.
 
 ## When to Use
 
@@ -16,14 +16,14 @@ Installing first time, setting up new environment, configuring authentication, t
 Follow the README's Quick Start; it is the tested path. In short:
 
 ```bash
-# Mac/Linux (Windows: py -m venv patent-creator-venv, then .\patent-creator-venv\Scripts\...)
+# Mac/Linux (Windows: py -m venv qwen-patent-creator-venv, then .\qwen-patent-creator-venv\Scripts\...)
 cd ~
-python3 -m venv patent-creator-venv
-patent-creator-venv/bin/pip install git+https://github.com/RobThePCGuy/Claude-Patent-Creator.git
-patent-creator-venv/bin/patent-creator setup
+python3 -m venv qwen-patent-creator-venv
+qwen-patent-creator-venv/bin/pip install git+https://github.com/DanielTillett/Qwen-Patent-Creator.git
+qwen-patent-creator-venv/bin/qwen-patent-creator setup
 ```
 
-Setup takes 25-40 minutes without an NVIDIA GPU and ends by testing the connection to Claude Code. Then restart Claude Code and ask: "Search MPEP for claim definiteness". From a plugin, `/claude-patent-creator-standalone:setup-patent-system` does the same steps into the same folder.
+Setup takes 25-40 minutes without an NVIDIA GPU and ends by testing the connection to your MCP client. Then restart your MCP client and ask: "Search MPEP for claim definiteness". From a plugin, `/setup-patent-system` does the same steps into the same folder.
 
 ## Complete Setup Lifecycle
 
@@ -43,16 +43,16 @@ nvidia-smi        # Optional: Check GPU
 
 ### Phase 2: Virtual Environment and Install
 
-Use the README's folder, `~/patent-creator-venv`, so every README instruction works as written. Nothing needs activating; call the venv's commands by path.
+Use the README's folder, `~/qwen-patent-creator-venv`, so every README instruction works as written. Nothing needs activating; call the venv's commands by path.
 
 ```bash
 # Mac/Linux
 cd ~
-python3 -m venv patent-creator-venv
-patent-creator-venv/bin/pip install git+https://github.com/RobThePCGuy/Claude-Patent-Creator.git
+python3 -m venv qwen-patent-creator-venv
+qwen-patent-creator-venv/bin/pip install git+https://github.com/DanielTillett/Qwen-Patent-Creator.git
 # Windows (PowerShell, from cd ~)
-py -m venv patent-creator-venv
-.\patent-creator-venv\Scripts\pip install git+https://github.com/RobThePCGuy/Claude-Patent-Creator.git
+py -m venv qwen-patent-creator-venv
+.\qwen-patent-creator-venv\Scripts\pip install git+https://github.com/DanielTillett/Qwen-Patent-Creator.git
 ```
 
 From a source checkout instead: `pip install -e .` inside a venv made in the checkout.
@@ -60,12 +60,12 @@ From a source checkout instead: `pip install -e .` inside a venv made in the che
 ### Phase 3: Setup
 
 ```bash
-~/patent-creator-venv/bin/patent-creator setup     # Windows: .\patent-creator-venv\Scripts\patent-creator setup
+~/qwen-patent-creator-venv/bin/qwen-patent-creator setup     # Windows: .\qwen-patent-creator-venv\Scripts\qwen-patent-creator setup
 ```
 
 Handles GPU detection (installs the CUDA PyTorch build on NVIDIA and restarts itself), downloads, the index build (25-40 min without an NVIDIA GPU, with progress lines), Graphviz (asks first), BigQuery detection, and registration with a live connection test.
 
-**GPU repairs:** let setup select the wheel for the detected GPU. Older NVIDIA cards need different wheels from recent cards. Follow `${CLAUDE_PLUGIN_ROOT}/docs/GPU_SETUP.md` and test an actual CUDA operation before claiming GPU acceleration works.
+**GPU repairs:** let setup select the wheel for the detected GPU. Older NVIDIA cards need different wheels from recent cards. Follow `docs/GPU_SETUP.md` in the source checkout and test an actual CUDA operation before claiming GPU acceleration works.
 
 ### Phase 4: BigQuery Authentication (Optional)
 
@@ -76,39 +76,46 @@ The setup auto-detects existing gcloud credentials. If already authenticated, Bi
 **If the user wants to enable BigQuery later:**
 ```bash
 # One command — opens browser for Google sign-in (free, no credit card)
-! gcloud auth application-default login   # typed in the Claude Code prompt; in a plain terminal drop the "!"
+! gcloud auth application-default login   # typed in the your MCP client prompt; in a plain terminal drop the "!"
 ```
 
 **Do NOT present BigQuery as a failure or required step.** It is a bonus feature.
 
 ### Phase 5: MCP Server Registration
 
-Setup registers the server and tests the connection itself. To recheck: `~/patent-creator-venv/bin/patent-creator verify-config`.
+Setup registers the server and tests the connection itself. To recheck: `~/qwen-patent-creator-venv/bin/qwen-patent-creator verify-config`.
 
 **Manual:**
 ```bash
 # Get paths
-~/patent-creator-venv/bin/patent-creator verify-config
+~/qwen-patent-creator-venv/bin/qwen-patent-creator verify-config
 
-# Register (use forward slashes!)
-claude mcp add --transport stdio claude-patent-creator --scope user -- \
+# Register, letting setup write the entry for the client you use
+qwen-patent-creator setup --client auto --scope user   # or claude / opencode / qwen-code
+
+# Manual, for Claude Code only (use forward slashes!). Claude Code is still a client
+# setup can register, but this fork ships no Claude plugin layer: only the MCP server.
+claude mcp add --transport stdio qwen-patent-creator --scope user -- \
   "C:/path/to/venv/Scripts/python.exe" \
   "C:/path/to/mcp_server/server.py"
 
+# OpenCode and Qwen Code read a JSON file instead: .opencode/opencode.jsonc and .qwen/settings.json,
+# written by setup under --scope project, or in the user config with --scope user.
+
 # Verify
-claude mcp list
+opencode mcp list or qwen mcp list
 ```
 
-**Critical:** Restart Claude Code after registration!
+**Critical:** Restart your MCP client after registration!
 
 ### Phase 6: Configuration Files
 
-Nothing is required. Save optional keys with the config command (they go in `~/.config/claude-patent-creator/config.json`, or `%APPDATA%\claude-patent-creator\config.json` on Windows):
+Nothing is required. Save optional keys with the config command (they go in `~/.config/qwen-patent-creator/config.json`, or `%APPDATA%\qwen-patent-creator\config.json` on Windows):
 
 ```bash
-~/patent-creator-venv/bin/patent-creator config set SERPAPI_API_KEY "key"        # patent search, free 250/month (recommended)
-~/patent-creator-venv/bin/patent-creator config set GOOGLE_CLOUD_PROJECT my-proj # optional BigQuery search
-~/patent-creator-venv/bin/patent-creator config list                             # everything, with sources
+~/qwen-patent-creator-venv/bin/qwen-patent-creator config set SERPAPI_API_KEY "key"        # patent search, free 250/month (recommended)
+~/qwen-patent-creator-venv/bin/qwen-patent-creator config set GOOGLE_CLOUD_PROJECT my-proj # optional BigQuery search
+~/qwen-patent-creator-venv/bin/qwen-patent-creator config list                             # everything, with sources
 ```
 
 ANTHROPIC_API_KEY / OPENAI_API_KEY are only for HyDE with HYDE_BACKEND=api, which is off by default. A `.env` in a source checkout also works.
@@ -116,7 +123,7 @@ ANTHROPIC_API_KEY / OPENAI_API_KEY are only for HyDE with HYDE_BACKEND=api, whic
 ### Phase 7: Health Check
 
 ```bash
-~/patent-creator-venv/bin/patent-creator health      # Windows: .\patent-creator-venv\Scripts\patent-creator health
+~/qwen-patent-creator-venv/bin/qwen-patent-creator health      # Windows: .\qwen-patent-creator-venv\Scripts\qwen-patent-creator health
 ```
 
 ### Phase 8: Present Results
@@ -145,22 +152,22 @@ Patent search needs SerpApi (recommended), EPO OPS, or BigQuery. Use the matchin
 | Issue | Solution |
 |-------|----------|
 | PyTorch CPU-only | Reinstall PyTorch FIRST |
-| MCP not loading | Restart Claude Code, verify with `claude mcp list` |
+| MCP not loading | Restart your MCP client, verify with `opencode mcp list or qwen mcp list` |
 | Path errors | Use forward slashes (/) not backslashes (\\) |
 | BigQuery fails | Re-auth: `gcloud auth application-default login` |
-| Index not found | Build: `~/patent-creator-venv/bin/patent-creator setup --rebuild` |
-| Import errors | Run the venv's own commands (`~/patent-creator-venv/bin/...`); nothing needs activating |
+| Index not found | Build: `~/qwen-patent-creator-venv/bin/qwen-patent-creator setup --rebuild` |
+| Import errors | Run the venv's own commands (`~/qwen-patent-creator-venv/bin/...`); nothing needs activating |
 
 ## Platform-Specific Notes
 
 ### Windows
-- PowerShell: call `.\patent-creator-venv\Scripts\patent-creator` from `cd ~`; no activation needed
+- PowerShell: call `.\qwen-patent-creator-venv\Scripts\qwen-patent-creator` from `cd ~`; no activation needed
 - Git Bash required for MCP commands
 - Paths: Always forward slashes in MCP config
 - CUDA: Install NVIDIA drivers + toolkit
 
 ### Linux
-- venv: call `~/patent-creator-venv/bin/patent-creator`; no activation needed
+- venv: call `~/qwen-patent-creator-venv/bin/qwen-patent-creator`; no activation needed
 - FAISS-GPU: Available on Linux only
 - Permissions: May need sudo
 
@@ -173,22 +180,22 @@ Patent search needs SerpApi (recommended), EPO OPS, or BigQuery. Use the matchin
 
 ### Updating Dependencies
 ```bash
-~/patent-creator-venv/bin/pip install --upgrade git+https://github.com/RobThePCGuy/Claude-Patent-Creator.git
-~/patent-creator-venv/bin/patent-creator setup     # re-checks, rebuilds only if needed
+~/qwen-patent-creator-venv/bin/pip install --upgrade git+https://github.com/DanielTillett/Qwen-Patent-Creator.git
+~/qwen-patent-creator-venv/bin/qwen-patent-creator setup     # re-checks, rebuilds only if needed
 ```
 
 From a source checkout: `git pull`, then `venv/bin/pip install -e . --upgrade` and `venv/bin/python -m pytest -q`.
 
 ### Rebuilding Index
 ```bash
-~/patent-creator-venv/bin/patent-creator setup --rebuild
+~/qwen-patent-creator-venv/bin/qwen-patent-creator setup --rebuild
 # About 5 minutes with an NVIDIA GPU, 25-40 minutes otherwise
 ```
 
 ### Re-registering MCP
 ```bash
-~/patent-creator-venv/bin/patent-creator setup   # re-registers and retests; downloads and index are kept
-# Restart Claude Code
+~/qwen-patent-creator-venv/bin/qwen-patent-creator setup   # re-registers and retests; downloads and index are kept
+# Restart your MCP client
 ```
 
 ## Quick Reference
@@ -196,20 +203,20 @@ From a source checkout: `git pull`, then `venv/bin/pip install -e . --upgrade` a
 ### Essential Commands
 ```bash
 # Setup
-~/patent-creator-venv/bin/patent-creator setup
-~/patent-creator-venv/bin/patent-creator health
-claude mcp list
+~/qwen-patent-creator-venv/bin/qwen-patent-creator setup
+~/qwen-patent-creator-venv/bin/qwen-patent-creator health
+opencode mcp list or qwen mcp list
 
 # Maintenance
-~/patent-creator-venv/bin/patent-creator setup --rebuild
-~/patent-creator-venv/bin/patent-creator verify-config
+~/qwen-patent-creator-venv/bin/qwen-patent-creator setup --rebuild
+~/qwen-patent-creator-venv/bin/qwen-patent-creator verify-config
 
 # Source checkout only
 venv/bin/python -m pytest -q
 ```
 
 ### Critical Files
-- `~/.config/claude-patent-creator/config.json` - saved settings and keys (`~/patent-creator-venv/bin/patent-creator config path`)
-- `~/.local/share/claude-patent-creator/data/` - downloaded sources and the search index (`PATENT_DATA_DIR` moves it)
+- `~/.config/qwen-patent-creator/config.json` - saved settings and keys (`~/qwen-patent-creator-venv/bin/qwen-patent-creator config path`)
+- `~/.local/share/qwen-patent-creator/data/` - downloaded sources and the search index (`PATENT_DATA_DIR` moves it)
 - `.env` - environment variables, source checkout only
 - `pdfs/` - MPEP PDF files

@@ -1,11 +1,7 @@
 ---
 description: Check patent application formalities (abstract, title, drawings per MPEP 608)
+tools: check_formalities, search_mpep, get_mpep_section
 argument-hint: "[optional: abstract | title | drawings | all] abstract-text title-text spec-text"
-allowed-tools:
-  - check_formalities
-  - search_mpep
-  - get_mpep_section
-model: claude-sonnet-4-5-20250929
 ---
 
 # Formalities Check

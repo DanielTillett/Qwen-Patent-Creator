@@ -1,6 +1,6 @@
 ---
 description: Configure optional Google BigQuery patent search
-allowed-tools: Bash
+tools: bash
 ---
 
 # Configure BigQuery
@@ -18,24 +18,24 @@ Save the project ID:
 
 macOS/Linux:
 ```bash
-"$HOME/patent-creator-venv/bin/patent-creator" config set GOOGLE_CLOUD_PROJECT "your-project-id"
+"$HOME/qwen-patent-creator-venv/bin/qwen-patent-creator" config set GOOGLE_CLOUD_PROJECT "your-project-id"
 ```
 
 Windows PowerShell:
 ```powershell
-& "$HOME\patent-creator-venv\Scripts\patent-creator.exe" config set GOOGLE_CLOUD_PROJECT "your-project-id"
+& "$HOME\qwen-patent-creator-venv\Scripts\qwen-patent-creator.exe" config set GOOGLE_CLOUD_PROJECT "your-project-id"
 ```
 
 Verify authentication and dataset/table access:
 
 macOS/Linux:
 ```bash
-"$HOME/patent-creator-venv/bin/patent-creator" check-bigquery
+"$HOME/qwen-patent-creator-venv/bin/qwen-patent-creator" check-bigquery
 ```
 
 Windows PowerShell:
 ```powershell
-& "$HOME\patent-creator-venv\Scripts\patent-creator.exe" check-bigquery
+& "$HOME\qwen-patent-creator-venv\Scripts\qwen-patent-creator.exe" check-bigquery
 ```
 
-This check reads table metadata. It does not run a sample patent search or return patent results. To test a real query, use `search_patents_bigquery` through MCP after `check_bigquery_status` succeeds; it can consume BigQuery quota. Restart Claude Code after changing saved settings.
+This check reads table metadata. It does not run a sample patent search or return patent results. To test a real query, use `search_patents_bigquery` through MCP after `check_bigquery_status` succeeds; it can consume BigQuery quota. Restart your MCP client after changing saved settings.

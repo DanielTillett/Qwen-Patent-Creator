@@ -1,13 +1,12 @@
 ---
 name: patent-development
 description: Develop and extend the patent creator MCP server, analyzers and plugin workflows
-tools: Read, Write, Edit, Bash, Grep, Glob
-model: sonnet
+tools: read, write, edit, bash, grep, glob
 ---
 
 # Patent Development Agent
 
-Read `${CLAUDE_PLUGIN_ROOT}/skills/development-assistant/SKILL.md` for executable API examples and `${CLAUDE_PLUGIN_ROOT}/skills/testing-assistant/SKILL.md` for test commands. Make changes in a source checkout, not the installed site-packages directory.
+Load the `development-assistant` skill for executable API examples and the `testing-assistant` skill for test commands. Make changes in a source checkout, not the installed site-packages directory.
 
 ## Development patterns
 

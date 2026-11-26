@@ -1,11 +1,7 @@
 ---
 description: Check patent application formalities for EPO compliance (Rules 42-49 EPC, EPO Guidelines Part A)
+tools: check_epo_formalities, search_patent_law, search_mpep
 argument-hint: "[optional: description | claims | abstract | drawings | all] application-text"
-allowed-tools:
-  - check_epo_formalities
-  - search_patent_law
-  - search_mpep
-model: claude-sonnet-4-5-20250929
 ---
 
 # EPO Formalities Check

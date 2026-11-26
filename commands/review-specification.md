@@ -1,11 +1,7 @@
 ---
 description: Review patent specification for 35 USC 112(a) compliance (written description and enablement heuristics; best mode requires manual review)
+tools: review_specification, search_mpep, get_mpep_section
 argument-hint: "[optional: written description | enablement | best mode] specification-text claims-text"
-allowed-tools:
-  - review_specification
-  - search_mpep
-  - get_mpep_section
-model: claude-sonnet-4-5-20250929
 ---
 
 # Specification Review

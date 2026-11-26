@@ -1,8 +1,7 @@
 ---
 name: epc-search
 description: RAG search across EPC provisions, EPO Guidelines for Examination, and PCT rules for European and international patent law research
-tools: Bash, Read, Write
-model: sonnet
+tools: bash, read, write
 ---
 
 # EPC/PCT Legal Search Skill

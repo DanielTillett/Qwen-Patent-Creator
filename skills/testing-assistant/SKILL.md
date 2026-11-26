@@ -11,28 +11,28 @@ Run from a source checkout. Install its development dependencies into the README
 
 macOS/Linux:
 ```bash
-"$HOME/patent-creator-venv/bin/python" -m pip install -e ".[dev]"
+"$HOME/qwen-patent-creator-venv/bin/python" -m pip install -e ".[dev]"
 ```
 
 Windows PowerShell:
 ```powershell
-& "$HOME\patent-creator-venv\Scripts\python.exe" -m pip install -e ".[dev]"
+& "$HOME\qwen-patent-creator-venv\Scripts\python.exe" -m pip install -e ".[dev]"
 ```
 
 Use the checkout's modules even if the interpreter has another editable install:
 
 macOS/Linux:
 ```bash
-PYTHONPATH=.:mcp_server "$HOME/patent-creator-venv/bin/python" -m pytest -q
-"$HOME/patent-creator-venv/bin/python" -m ruff check .
+PYTHONPATH=.:mcp_server "$HOME/qwen-patent-creator-venv/bin/python" -m pytest -q
+"$HOME/qwen-patent-creator-venv/bin/python" -m ruff check .
 ```
 
 Windows PowerShell:
 ```powershell
 $env:PYTHONPATH = ".;mcp_server"
-& "$HOME\patent-creator-venv\Scripts\python.exe" -m pytest -q
+& "$HOME\qwen-patent-creator-venv\Scripts\python.exe" -m pytest -q
 if ($LASTEXITCODE -ne 0) { throw "Regression tests failed" }
-& "$HOME\patent-creator-venv\Scripts\python.exe" -m ruff check .
+& "$HOME\qwen-patent-creator-venv\Scripts\python.exe" -m ruff check .
 if ($LASTEXITCODE -ne 0) { throw "Lint failed" }
 ```
 
@@ -40,37 +40,37 @@ Review every failure. Do not replace regression tests with an installation diagn
 
 ## Installed-package diagnostics
 
-The diagnostic scripts live in the plugin source, not in the pip package. Resolve `${CLAUDE_PLUGIN_ROOT}` to the actual plugin folder first. For a source checkout, use its absolute path. Set `PLUGIN_ROOT` below to that location; the example deliberately includes a space. Keep paths quoted.
+The diagnostic scripts live in the source checkout, not in the pip package. Set `REPO_ROOT` to the checkout root - the directory containing `pyproject.toml` - and keep paths quoted.
 
 macOS/Linux:
 ```bash
-PLUGIN_ROOT="/absolute/path/Patent Plugin"
+REPO_ROOT="/absolute/path/to/qwen-patent-creator"
 ```
 
 Windows PowerShell:
 ```powershell
-$PLUGIN_ROOT = "C:\absolute\path\Patent Plugin"
+$REPO_ROOT = "C:\absolute\path\to\qwen-patent-creator"
 ```
 
 
 macOS/Linux:
 ```bash
-"$HOME/patent-creator-venv/bin/python" "$PLUGIN_ROOT/scripts/test_install.py"
+"$HOME/qwen-patent-creator-venv/bin/python" "$REPO_ROOT/scripts/test_install.py"
 ```
 
 Windows PowerShell:
 ```powershell
-& "$HOME\patent-creator-venv\Scripts\python.exe" "$PLUGIN_ROOT/scripts/test_install.py"
+& "$HOME\qwen-patent-creator-venv\Scripts\python.exe" "$REPO_ROOT/scripts/test_install.py"
 ```
 
 macOS/Linux:
 ```bash
-"$HOME/patent-creator-venv/bin/python" "$PLUGIN_ROOT/scripts/test_analyzers.py"
+"$HOME/qwen-patent-creator-venv/bin/python" "$REPO_ROOT/scripts/test_analyzers.py"
 ```
 
 Windows PowerShell:
 ```powershell
-& "$HOME\patent-creator-venv\Scripts\python.exe" "$PLUGIN_ROOT/scripts/test_analyzers.py"
+& "$HOME\qwen-patent-creator-venv\Scripts\python.exe" "$REPO_ROOT/scripts/test_analyzers.py"
 ```
 
 Check the exit status after each command. On PowerShell, use `$LASTEXITCODE`; on macOS/Linux, use `$?` immediately after the command. No venv activation is required.
@@ -88,11 +88,11 @@ Additional scripts that exist in `scripts/`:
 
 Run these with the same quoted script-path pattern. BigQuery is optional and must not gate a SerpApi-only installation. Report unavailable services as skipped. Index regression tests are in `tests/` and run with pytest.
 
-For credentials saved only with `config set`, prefer the corresponding MCP status/search tools after restarting Claude Code. These standalone diagnostics do not all load saved settings; an unset-key result from a script does not prove that the saved configuration is broken.
+For credentials saved only with `config set`, prefer the corresponding MCP status/search tools after restarting your MCP client. These standalone diagnostics do not all load saved settings; an unset-key result from a script does not prove that the saved configuration is broken.
 
 ## Manual verification
 
-In Claude Code, search MPEP and inspect citations, search patents with the configured provider, review synthetic claims and generate a diagram if Graphviz is available. Record what was actually tested and what failed or was skipped. Never prefill a checklist as passed.
+In your MCP client, search MPEP and inspect citations, search patents with the configured provider, review synthetic claims and generate a diagram if Graphviz is available. Record what was actually tested and what failed or was skipped. Never prefill a checklist as passed.
 
 ## Adding tests
 

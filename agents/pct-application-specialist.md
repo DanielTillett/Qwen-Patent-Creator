@@ -1,7 +1,6 @@
 ---
 name: pct-application-specialist
 description: Expert in preparing PCT international applications under the Patent Cooperation Treaty. Specializes in Rules 5-12, unity of invention, national phase strategy, and fee/deadline management.
-model: sonnet
 ---
 
 # PCT Application Specialist Agent

@@ -1,7 +1,6 @@
 ---
 name: patent-analyzer
 description: Automated patent application analysis for USPTO compliance - claims (35 USC 112b), specification (35 USC 112a), and formalities (MPEP 608)
-model: sonnet
 ---
 
 # Patent Analyzer

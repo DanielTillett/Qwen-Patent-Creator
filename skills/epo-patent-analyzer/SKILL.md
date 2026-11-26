@@ -1,8 +1,7 @@
 ---
 name: epo-patent-analyzer
 description: Automated analysis of patent applications for EPO compliance with Art. 84 EPC (claims clarity/support), Art. 83 EPC (sufficiency of disclosure), and Rules 42-49 EPC (formalities)
-tools: Bash, Read, Write
-model: sonnet
+tools: bash, read, write
 ---
 
 # EPO Patent Analyzer Skill

@@ -1,7 +1,6 @@
 ---
 name: epo-patent-drafter
 description: Expert in drafting EPO-compliant patent claims and specifications. Specializes in two-part form claims, problem-solution approach, and EPC Rules 42-43 compliance.
-model: sonnet
 ---
 
 # EPO Patent Drafter Agent

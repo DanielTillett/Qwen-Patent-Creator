@@ -1,11 +1,7 @@
 ---
 description: Analyze patent claims for EPO Art. 84 EPC compliance - clarity and conciseness heuristics; description support requires separate review
+tools: review_epo_claims, search_patent_law, search_mpep
 argument-hint: "[optional: clarity | conciseness | support] claims-text"
-allowed-tools:
-  - review_epo_claims
-  - search_patent_law
-  - search_mpep
-model: claude-sonnet-4-5-20250929
 ---
 
 # EPO Claims Review

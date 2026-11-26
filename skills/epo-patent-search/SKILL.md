@@ -1,8 +1,7 @@
 ---
 name: epo-patent-search
 description: Search European patents using EPO OPS API (bibliographic data, available full text, families) and BigQuery (100M+ patents, EP filter) for prior art, competitive intelligence, and freedom-to-operate analysis
-tools: Bash, Read, Write
-model: sonnet
+tools: bash, read, write
 ---
 
 # EPO Patent Search Skill
@@ -55,7 +54,7 @@ Provides access to European patent data through two methods:
 **Setup**:
 ```bash
 gcloud auth application-default login
-"$HOME/patent-creator-venv/bin/patent-creator" config set GOOGLE_CLOUD_PROJECT your-project-id
+"$HOME/qwen-patent-creator-venv/bin/qwen-patent-creator" config set GOOGLE_CLOUD_PROJECT your-project-id
 ```
 
 ### EPO OPS API (Fallback search, available full text and families)
@@ -67,19 +66,19 @@ gcloud auth application-default login
 
 **Setup**:
 ```bash
-"$HOME/patent-creator-venv/bin/patent-creator" config set EPO_OPS_KEY "your-consumer-key"
-"$HOME/patent-creator-venv/bin/patent-creator" config set EPO_OPS_SECRET "your-consumer-secret"
+"$HOME/qwen-patent-creator-venv/bin/qwen-patent-creator" config set EPO_OPS_KEY "your-consumer-key"
+"$HOME/qwen-patent-creator-venv/bin/qwen-patent-creator" config set EPO_OPS_SECRET "your-consumer-secret"
 ```
 
 Windows PowerShell:
 ```powershell
-& "$HOME\patent-creator-venv\Scripts\patent-creator.exe" config set EPO_OPS_KEY "your-consumer-key"
-& "$HOME\patent-creator-venv\Scripts\patent-creator.exe" config set EPO_OPS_SECRET "your-consumer-secret"
+& "$HOME\qwen-patent-creator-venv\Scripts\qwen-patent-creator.exe" config set EPO_OPS_KEY "your-consumer-key"
+& "$HOME\qwen-patent-creator-venv\Scripts\qwen-patent-creator.exe" config set EPO_OPS_SECRET "your-consumer-secret"
 # Only if using BigQuery:
-& "$HOME\patent-creator-venv\Scripts\patent-creator.exe" config set GOOGLE_CLOUD_PROJECT your-project-id
+& "$HOME\qwen-patent-creator-venv\Scripts\qwen-patent-creator.exe" config set GOOGLE_CLOUD_PROJECT your-project-id
 ```
 
-Restart Claude Code afterwards. Check with the `check_epo_api_status` tool.
+Restart your MCP client afterwards. Check with the `check_epo_api_status` tool.
 
 ## How to Use
 

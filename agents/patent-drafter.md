@@ -1,8 +1,7 @@
 ---
 name: patent-drafter
 description: Expert in drafting USPTO-compliant patent claims and specifications. Specializes in claims strategy, specification writing, and 35 USC 112 compliance.
-tools: Bash, Read, Write
-model: sonnet
+tools: bash, read, write
 ---
 
 # Patent Drafter Agent

@@ -1,13 +1,7 @@
 ---
 description: Complete patent application review (claims + specification + formalities in parallel)
+tools: review_patent_claims, review_specification, check_formalities, search_mpep, get_mpep_section
 argument-hint: "Provide complete application text (claims, specification, abstract)"
-allowed-tools:
-  - review_patent_claims
-  - review_specification
-  - check_formalities
-  - search_mpep
-  - get_mpep_section
-model: claude-sonnet-4-5-20250929
 ---
 
 # Complete Patent Application Review

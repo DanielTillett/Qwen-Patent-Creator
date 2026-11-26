@@ -1,8 +1,7 @@
 ---
 name: patent-claims-analyzer
 description: Automated analysis of patent claims for USPTO compliance with 35 USC 112(b) requirements - antecedent basis, definiteness, claim structure
-tools: Bash, Read, Write
-model: sonnet
+tools: bash, read, write
 ---
 
 # Patent Claims Analyzer Skill
@@ -51,7 +50,7 @@ Performs comprehensive automated analysis:
 ## Required Data
 
 This skill uses the automated claims analyzer from:
-**Location**: `${CLAUDE_PLUGIN_ROOT}/mcp_server/claims_analyzer.py` (plugin source; the pip-installed module is `mcp_server.claims_analyzer`)
+**Module**: `mcp_server.claims_analyzer` (source checkout: `mcp_server/claims_analyzer.py`)
 
 ## How to Use
 
@@ -59,9 +58,6 @@ When this skill is invoked:
 
 1. **Load the claims analyzer**:
    ```python
-   import os
-   import sys
-   sys.path.insert(0, os.environ.get('CLAUDE_PLUGIN_ROOT', '.'))
    from mcp_server.claims_analyzer import ClaimsAnalyzer
 
    analyzer = ClaimsAnalyzer()

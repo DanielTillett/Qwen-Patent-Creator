@@ -1,11 +1,7 @@
 ---
 description: Check international patent application formalities for PCT compliance (PCT Rules 5-12, Administrative Instructions)
+tools: check_pct_formalities, search_patent_law, search_mpep
 argument-hint: "[optional: request | description | claims | abstract | drawings | all] application-text"
-allowed-tools:
-  - check_pct_formalities
-  - search_patent_law
-  - search_mpep
-model: claude-sonnet-4-5-20250929
 ---
 
 # PCT Formalities Check

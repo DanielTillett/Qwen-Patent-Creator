@@ -36,7 +36,7 @@ def _get_mpep_index() -> MPEPIndex:
         if not candidate.index_file.exists():
             raise RuntimeError(
                 "MPEP index not found. Run setup first (see the README Quick Start):\n"
-                + render("  patent-creator setup\n")
+                + render("  qwen-patent-creator setup\n")
                 + "This downloads and indexes the MPEP, 35 USC, 37 CFR and the EPO/PCT rules."
             )
 

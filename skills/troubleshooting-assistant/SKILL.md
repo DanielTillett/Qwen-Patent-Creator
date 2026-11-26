@@ -9,63 +9,63 @@ Record the exact error and reproduce the smallest failing operation. Check the i
 
 macOS/Linux:
 ```bash
-"$HOME/patent-creator-venv/bin/patent-creator" health
+"$HOME/qwen-patent-creator-venv/bin/qwen-patent-creator" health
 ```
 
 Windows PowerShell:
 ```powershell
-& "$HOME\patent-creator-venv\Scripts\patent-creator.exe" health
+& "$HOME\qwen-patent-creator-venv\Scripts\qwen-patent-creator.exe" health
 ```
 
 macOS/Linux:
 ```bash
-"$HOME/patent-creator-venv/bin/patent-creator" verify-config
+"$HOME/qwen-patent-creator-venv/bin/qwen-patent-creator" verify-config
 ```
 
 Windows PowerShell:
 ```powershell
-& "$HOME\patent-creator-venv\Scripts\patent-creator.exe" verify-config
+& "$HOME\qwen-patent-creator-venv\Scripts\qwen-patent-creator.exe" verify-config
 ```
 
-Check registration with `claude mcp list`. After repairs, restart Claude Code and exercise the failing MCP operation again.
+Check registration with `opencode mcp list or qwen mcp list`. After repairs, restart your MCP client and exercise the failing MCP operation again.
 
 ## Component diagnostics
 
-The diagnostic scripts live in the plugin source, not in the pip package. Resolve `${CLAUDE_PLUGIN_ROOT}` to the actual plugin folder first. For a source checkout, use its absolute path. Set `PLUGIN_ROOT` below to that location; the example deliberately includes a space. Keep paths quoted.
+The diagnostic scripts live in the source checkout, not in the pip package. Set `REPO_ROOT` to the checkout root - the directory containing `pyproject.toml` - and keep paths quoted.
 
 macOS/Linux:
 ```bash
-PLUGIN_ROOT="/absolute/path/Patent Plugin"
+REPO_ROOT="/absolute/path/to/qwen-patent-creator"
 ```
 
 Windows PowerShell:
 ```powershell
-$PLUGIN_ROOT = "C:\absolute\path\Patent Plugin"
+$REPO_ROOT = "C:\absolute\path\to\qwen-patent-creator"
 ```
 
 macOS/Linux:
 ```bash
-"$HOME/patent-creator-venv/bin/python" "$PLUGIN_ROOT/scripts/test_install.py"
+"$HOME/qwen-patent-creator-venv/bin/python" "$REPO_ROOT/scripts/test_install.py"
 ```
 
 Windows PowerShell:
 ```powershell
-& "$HOME\patent-creator-venv\Scripts\python.exe" "$PLUGIN_ROOT/scripts/test_install.py"
+& "$HOME\qwen-patent-creator-venv\Scripts\python.exe" "$REPO_ROOT/scripts/test_install.py"
 ```
 
 macOS/Linux:
 ```bash
-"$HOME/patent-creator-venv/bin/python" "$PLUGIN_ROOT/scripts/test_analyzers.py"
+"$HOME/qwen-patent-creator-venv/bin/python" "$REPO_ROOT/scripts/test_analyzers.py"
 ```
 
 Windows PowerShell:
 ```powershell
-& "$HOME\patent-creator-venv\Scripts\python.exe" "$PLUGIN_ROOT/scripts/test_analyzers.py"
+& "$HOME\qwen-patent-creator-venv\Scripts\python.exe" "$REPO_ROOT/scripts/test_analyzers.py"
 ```
 
 Use `scripts/test_gpu.py` for an intended CUDA installation, `scripts/test_google_patents.py` for configured SerpApi, or `scripts/test_bigquery.py` only for configured BigQuery. Use the quoted invocation pattern above and report skipped optional components. Live search tests consume service quota.
 
-For credentials saved only with `config set`, prefer the corresponding MCP status/search tools after restarting Claude Code. These standalone diagnostics do not all load saved settings; an unset-key result from a script does not prove that the saved configuration is broken.
+For credentials saved only with `config set`, prefer the corresponding MCP status/search tools after restarting your MCP client. These standalone diagnostics do not all load saved settings; an unset-key result from a script does not prove that the saved configuration is broken.
 
 ## Repairs
 
@@ -73,12 +73,12 @@ For credentials saved only with `config set`, prefer the corresponding MCP statu
 
 macOS/Linux:
 ```bash
-"$HOME/patent-creator-venv/bin/python" -m pip install --upgrade git+https://github.com/RobThePCGuy/Claude-Patent-Creator.git
+"$HOME/qwen-patent-creator-venv/bin/python" -m pip install --upgrade git+https://github.com/DanielTillett/Qwen-Patent-Creator.git
 ```
 
 Windows PowerShell:
 ```powershell
-& "$HOME\patent-creator-venv\Scripts\python.exe" -m pip install --upgrade git+https://github.com/RobThePCGuy/Claude-Patent-Creator.git
+& "$HOME\qwen-patent-creator-venv\Scripts\python.exe" -m pip install --upgrade git+https://github.com/DanielTillett/Qwen-Patent-Creator.git
 ```
 
 - Missing or damaged index: follow the **Index Manager** skill. Check the actual Storage paths, then use `setup --rebuild`; rebuilding does not update source editions.
@@ -92,12 +92,12 @@ Enable debug logging if needed:
 
 macOS/Linux:
 ```bash
-"$HOME/patent-creator-venv/bin/patent-creator" config set PATENT_LOG_LEVEL DEBUG
+"$HOME/qwen-patent-creator-venv/bin/qwen-patent-creator" config set PATENT_LOG_LEVEL DEBUG
 ```
 
 Windows PowerShell:
 ```powershell
-& "$HOME\patent-creator-venv\Scripts\patent-creator.exe" config set PATENT_LOG_LEVEL DEBUG
+& "$HOME\qwen-patent-creator-venv\Scripts\qwen-patent-creator.exe" config set PATENT_LOG_LEVEL DEBUG
 ```
 
-Restart Claude Code to apply settings. Restore normal logging with `config unset PATENT_LOG_LEVEL`. Keep credentials out of diagnostic reports.
+Restart your MCP client to apply settings. Restore normal logging with `config unset PATENT_LOG_LEVEL`. Keep credentials out of diagnostic reports.

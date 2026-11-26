@@ -1,7 +1,6 @@
 ---
 name: epo-patent-analyzer
 description: Automated EPO patent application analysis for EPC compliance - claims (Art. 84 EPC), sufficiency (Art. 83 EPC), and formalities (Rules 42-49 EPC)
-model: sonnet
 ---
 
 # EPO Patent Analyzer

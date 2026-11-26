@@ -1,13 +1,12 @@
 ---
 name: patent-diagram-generator
 description: Create patent-style technical diagrams including flowcharts, block diagrams, and system architectures using Graphviz with reference numbering
-tools: Bash, Read, Write
-model: sonnet
+tools: bash, read, write
 ---
 
 # Patent Diagram Generator Skill
 
-> **Windows PowerShell:** replace a macOS/Linux Python invocation with `& "$HOME\patent-creator-venv\Scripts\python.exe"` and a CLI invocation with `& "$HOME\patent-creator-venv\Scripts\patent-creator.exe"`. Keep script paths quoted. Python code blocks are Python source, not shell commands.
+> **Windows PowerShell:** replace a macOS/Linux Python invocation with `& "$HOME\qwen-patent-creator-venv\Scripts\python.exe"` and a CLI invocation with `& "$HOME\qwen-patent-creator-venv\Scripts\qwen-patent-creator.exe"`. Keep script paths quoted. Python code blocks are Python source, not shell commands.
 
 Create patent-style technical diagrams including flowcharts, block diagrams, and system architectures using Graphviz.
 
@@ -66,7 +65,7 @@ brew install graphviz
 
 **Python Package**:
 ```bash
-"$HOME/patent-creator-venv/bin/python" -m pip install graphviz   # normally already installed
+"$HOME/qwen-patent-creator-venv/bin/python" -m pip install graphviz   # normally already installed
 ```
 
 ## How to Use
@@ -75,9 +74,6 @@ When this skill is invoked:
 
 1. **Load diagram generator**:
    ```python
-   import os
-   import sys
-   sys.path.insert(0, os.environ.get('CLAUDE_PLUGIN_ROOT', '.'))
    from mcp_server.diagram_generator import PatentDiagramGenerator
 
    generator = PatentDiagramGenerator()
@@ -271,7 +267,7 @@ When creating diagrams:
 If Graphviz is not installed:
 1. Check installation: `dot -V`
 2. Install for your OS (see above)
-3. Verify Python package: `"$HOME/patent-creator-venv/bin/python" -m pip show graphviz`
+3. Verify Python package: `"$HOME/qwen-patent-creator-venv/bin/python" -m pip show graphviz`
 4. Test generation: call the `check_diagram_tools_status` tool, then render a two-node diagram with `render_diagram`
 
 ## Tools Available

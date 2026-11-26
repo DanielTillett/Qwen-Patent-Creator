@@ -1,8 +1,7 @@
 ---
 name: pct-application
 description: PCT international application preparation under PCT Rules 5-12 - unity of invention, formal requirements, national phase entry strategy, and deadline management
-tools: Bash, Read, Write
-model: sonnet
+tools: bash, read, write
 ---
 
 # PCT Application Skill

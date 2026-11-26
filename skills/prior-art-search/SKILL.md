@@ -1,8 +1,7 @@
 ---
 name: prior-art-search
 description: Systematic 7-step methodology for comprehensive patent prior art searches and patentability assessments using Google Patents (SerpApi), EPO OPS or BigQuery, CPC classification and research-paper search
-tools: Bash, Read, Write
-model: sonnet
+tools: bash, read, write
 ---
 
 # Prior Art Search Skill
@@ -96,7 +95,7 @@ Searches (run each separately, then merge/dedupe):
 **Goal**: Cast wide net to find relevant patents
 
 
-**Which patent search to use:** call `check_google_patents_status` first. If it is ready (the free SerpApi key from the README's Quick Start, Step 3), run every keyword search with `search_patents_google`. If not, call `check_epo_api_status`; when EPO OPS is ready, run the keyword searches with `search_epo_patents` (worldwide titles and abstracts, CQL `ta=`) and the CPC step with `cpc=` codes, reading available claims/description with `get_epo_patent` (EP, WO and selected national publications). Empty text and not-found/error messages are not a successful read; record coverage limits. Use `search_patents_bigquery` only when `check_bigquery_status` says BigQuery is configured; each keyword search there scans about 341 GiB. `search_uspto_api` (after `check_uspto_api_status`) searches ODP application metadata (including titles, parties and status), without claims/description full-text search; use it only as a supplement. If none of Google Patents, EPO OPS and BigQuery is ready, report status errors and restore a provider or set up SerpApi (README Quick Start, Step 3) and run a no-key first screen in the meantime: several `WebSearch` queries restricted to Google Patents (`allowed_domains: ["patents.google.com"]`), then read the closest patent pages with `WebFetch` for claims, dates, CPC codes and citations. Label everything found this way a web first screen, not a prior-art search: web search ranks pages rather than matching claim text and misses much of the record, so a thin or empty result is never evidence of no prior art. A first screen never supports a novelty, obviousness or patentability verdict: in every later assessment, report section or phase that would give one (including any NOVEL / LIKELY NO verdict), write "Not assessed: only a web first screen was run; set up patent search and rerun" instead. CPC searches run through Google Patents (`CPC=`), EPO OPS (`cpc=`) or BigQuery (`search_patents_by_cpc_bigquery`); with none ready, mark the CPC step unverified and describe only the web queries actually run.
+**Which patent search to use:** call `check_google_patents_status` first. If it is ready (the free SerpApi key from the README's Quick Start, Step 3), run every keyword search with `search_patents_google`. If not, call `check_epo_api_status`; when EPO OPS is ready, run the keyword searches with `search_epo_patents` (worldwide titles and abstracts, CQL `ta=`) and the CPC step with `cpc=` codes, reading available claims/description with `get_epo_patent` (EP, WO and selected national publications). Empty text and not-found/error messages are not a successful read; record coverage limits. Use `search_patents_bigquery` only when `check_bigquery_status` says BigQuery is configured; each keyword search there scans about 341 GiB. `search_uspto_api` (after `check_uspto_api_status`) searches ODP application metadata (including titles, parties and status), without claims/description full-text search; use it only as a supplement. If none of Google Patents, EPO OPS and BigQuery is ready, report status errors and restore a provider or set up SerpApi (README Quick Start, Step 3) and run a no-key first screen in the meantime: several `websearch` queries restricted to Google Patents (`allowed_domains: ["patents.google.com"]`), then read the closest patent pages with `webfetch` for claims, dates, CPC codes and citations. Label everything found this way a web first screen, not a prior-art search: web search ranks pages rather than matching claim text and misses much of the record, so a thin or empty result is never evidence of no prior art. A first screen never supports a novelty, obviousness or patentability verdict: in every later assessment, report section or phase that would give one (including any NOVEL / LIKELY NO verdict), write "Not assessed: only a web first screen was run; set up patent search and rerun" instead. CPC searches run through Google Patents (`CPC=`), EPO OPS (`cpc=`) or BigQuery (`search_patents_by_cpc_bigquery`); with none ready, mark the CPC step unverified and describe only the web queries actually run.
 
 **Process**:
 1. Run keyword searches (`search_patents_google`, `search_epo_patents`, or `search_patents_bigquery` as above)
@@ -212,7 +211,7 @@ If Step 3 ran only a web first screen, the report's novelty, obviousness and pat
 ## Executive Summary
 - Invention: [Brief description]
 - Search Date: [Date]
-- Searcher: Claude Patent Creator
+- Searcher: Qwen Patent Creator
 - Databases: whichever answered: Google Patents (SerpApi), EPO OPS or BigQuery, plus the paper sources `search_non_patent_literature` reports as searched
 - Time Period: [Year range]
 

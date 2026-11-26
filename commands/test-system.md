@@ -1,21 +1,21 @@
 ---
 description: Run local diagnostics and selected optional service tests
-allowed-tools: Bash
+tools: bash
 argument-hint: [test-type]
 ---
 
 # Test Patent Creator
 
-The diagnostic scripts live in the plugin source, not in the pip package. Resolve `${CLAUDE_PLUGIN_ROOT}` to the actual plugin folder first. For a source checkout, use its absolute path. Set `PLUGIN_ROOT` below to that location; the example deliberately includes a space. Keep paths quoted.
+The diagnostic scripts live in the source checkout, not in the pip package. Set `REPO_ROOT` to the checkout root - the directory containing `pyproject.toml` - and keep paths quoted.
 
 macOS/Linux:
 ```bash
-PLUGIN_ROOT="/absolute/path/Patent Plugin"
+REPO_ROOT="/absolute/path/to/qwen-patent-creator"
 ```
 
 Windows PowerShell:
 ```powershell
-$PLUGIN_ROOT = "C:\absolute\path\Patent Plugin"
+$REPO_ROOT = "C:\absolute\path\to\qwen-patent-creator"
 ```
 
 
@@ -25,22 +25,22 @@ Run installation diagnostics, then analyzers. Inspect failures and exit status b
 
 macOS/Linux:
 ```bash
-"$HOME/patent-creator-venv/bin/python" "$PLUGIN_ROOT/scripts/test_install.py"
+"$HOME/qwen-patent-creator-venv/bin/python" "$REPO_ROOT/scripts/test_install.py"
 ```
 
 Windows PowerShell:
 ```powershell
-& "$HOME\patent-creator-venv\Scripts\python.exe" "$PLUGIN_ROOT/scripts/test_install.py"
+& "$HOME\qwen-patent-creator-venv\Scripts\python.exe" "$REPO_ROOT/scripts/test_install.py"
 ```
 
 macOS/Linux:
 ```bash
-"$HOME/patent-creator-venv/bin/python" "$PLUGIN_ROOT/scripts/test_analyzers.py"
+"$HOME/qwen-patent-creator-venv/bin/python" "$REPO_ROOT/scripts/test_analyzers.py"
 ```
 
 Windows PowerShell:
 ```powershell
-& "$HOME\patent-creator-venv\Scripts\python.exe" "$PLUGIN_ROOT/scripts/test_analyzers.py"
+& "$HOME\qwen-patent-creator-venv\Scripts\python.exe" "$REPO_ROOT/scripts/test_analyzers.py"
 ```
 
 ## Optional checks
@@ -57,14 +57,14 @@ For example, an optional GPU check:
 
 macOS/Linux:
 ```bash
-"$HOME/patent-creator-venv/bin/python" "$PLUGIN_ROOT/scripts/test_gpu.py"
+"$HOME/qwen-patent-creator-venv/bin/python" "$REPO_ROOT/scripts/test_gpu.py"
 ```
 
 Windows PowerShell:
 ```powershell
-& "$HOME\patent-creator-venv\Scripts\python.exe" "$PLUGIN_ROOT/scripts/test_gpu.py"
+& "$HOME\qwen-patent-creator-venv\Scripts\python.exe" "$REPO_ROOT/scripts/test_gpu.py"
 ```
 
-For credentials saved only with `config set`, prefer the corresponding MCP status/search tools after restarting Claude Code. These standalone diagnostics do not all load saved settings; an unset-key result from a script does not prove that the saved configuration is broken.
+For credentials saved only with `config set`, prefer the corresponding MCP status/search tools after restarting your MCP client. These standalone diagnostics do not all load saved settings; an unset-key result from a script does not prove that the saved configuration is broken.
 
-Replace only the script filename to run another listed diagnostic. Confirm actual search and review behavior in Claude Code as well; diagnostics alone do not verify the complete workflow.
+Replace only the script filename to run another listed diagnostic. Confirm actual search and review behavior in your MCP client as well; diagnostics alone do not verify the complete workflow.

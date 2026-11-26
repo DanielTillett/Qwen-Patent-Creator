@@ -1,8 +1,7 @@
 ---
 name: patent-application-creator
 description: End-to-end patent campaign from ANY raw material ("here is some information; make a patent") to a filing-ready provisional package - invention mining, worth-it economics (design-around cost, detectability), exhaustive adversarial prior art, claims-first drafting, machine-verified compliance, hostile-examiner attack pass, and an honest no-go when nothing clears the bar or the fence is not worth the money
-tools: Bash, Read, Write
-model: sonnet
+tools: bash, read, write
 ---
 
 # Patent Application Creator Skill
@@ -251,11 +250,11 @@ Use `render_diagram` with DOT for custom layouts. Include reference numerals on 
 
 ## Phase 4 — Machine verification loop (iterate to clean)
 
-1. `~/patent-creator-venv/bin/patent-creator config set PATENT_ENABLE_ANTECEDENT_CHECK 1` — the
+1. `~/qwen-patent-creator-venv/bin/qwen-patent-creator config set PATENT_ENABLE_ANTECEDENT_CHECK 1` — the
    antecedent check is opt-in; a campaign MUST run it. Use the executable
    from the user's actual installation. This saves configuration; it does
    not update an already-running server's environment.
-2. **Restart Claude Code (or restart its patent-creator MCP server)** after
+2. **Restart your MCP client (or restart its patent-creator MCP server)** after
    enabling the setting. Then run `review_patent_claims` on the full claim
    set. Inspect that result: its `checks_run` MUST include `antecedent_basis`.
    If absent, report the check as skipped, retain the reason from

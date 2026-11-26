@@ -1,13 +1,12 @@
 ---
 name: bigquery-patent-search
 description: Fast, cloud-based patent searching across 100 million+ worldwide patents using Google BigQuery - keyword search, CPC classification, patent details retrieval
-tools: Bash, Read, Write
-model: sonnet
+tools: bash, read, write
 ---
 
 # BigQuery Patent Search Skill
 
-> **Windows PowerShell:** replace a macOS/Linux Python invocation with `& "$HOME\patent-creator-venv\Scripts\python.exe"` and a CLI invocation with `& "$HOME\patent-creator-venv\Scripts\patent-creator.exe"`. Keep script paths quoted. Python code blocks are Python source, not shell commands.
+> **Windows PowerShell:** replace a macOS/Linux Python invocation with `& "$HOME\qwen-patent-creator-venv\Scripts\python.exe"` and a CLI invocation with `& "$HOME\qwen-patent-creator-venv\Scripts\qwen-patent-creator.exe"`. Keep script paths quoted. Python code blocks are Python source, not shell commands.
 
 Fast, cloud-based patent searching across 100 million+ worldwide patents using Google BigQuery.
 
@@ -60,15 +59,15 @@ This skill requires Google Cloud authentication:
 gcloud auth application-default login
 
 # Set project (get ID from console.cloud.google.com)
-"$HOME/patent-creator-venv/bin/patent-creator" config set GOOGLE_CLOUD_PROJECT your-project-id
+"$HOME/qwen-patent-creator-venv/bin/qwen-patent-creator" config set GOOGLE_CLOUD_PROJECT your-project-id
 ```
 
 Windows PowerShell:
 ```powershell
-& "$HOME\patent-creator-venv\Scripts\patent-creator.exe" config set GOOGLE_CLOUD_PROJECT your-project-id
+& "$HOME\qwen-patent-creator-venv\Scripts\qwen-patent-creator.exe" config set GOOGLE_CLOUD_PROJECT your-project-id
 ```
 
-Restart Claude Code after saving the project. BigQuery is optional; the **Patent Search** skill uses SerpApi by default.
+Restart your MCP client after saving the project. BigQuery is optional; the **Patent Search** skill uses SerpApi by default.
 
 ## How to Use
 
@@ -76,9 +75,6 @@ When this skill is invoked:
 
 1. **Initialize BigQuery searcher**:
    ```python
-   import os
-   import sys
-   sys.path.insert(0, os.environ.get('CLAUDE_PLUGIN_ROOT', '.'))
    from mcp_server.bigquery_search import BigQueryPatentSearch
 
    searcher = BigQueryPatentSearch()
@@ -212,7 +208,7 @@ If BigQuery is not configured:
 1. Check if `google-cloud-bigquery` is installed
 2. Verify authentication: `gcloud auth application-default login`
 3. Confirm project ID in environment: `GOOGLE_CLOUD_PROJECT`
-4. Test with: `"$HOME/patent-creator-venv/bin/patent-creator" check-bigquery`
+4. Test with: `"$HOME/qwen-patent-creator-venv/bin/qwen-patent-creator" check-bigquery`
 
 ## Cost Considerations
 

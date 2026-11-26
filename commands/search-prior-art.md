@@ -1,6 +1,6 @@
 ---
 description: Conduct comprehensive prior art search using 7-step methodology across 100M+ patents (Google Patents via SerpApi, EPO OPS, or BigQuery) and research papers
-allowed-tools: Bash, Read, Write
+tools: bash, read, write
 ---
 
 # Search for Prior Art
@@ -123,7 +123,7 @@ I'll create a comprehensive report with:
 
 ## Executive Summary
 - Invention: [Description]
-- Searcher: Claude Patent Creator
+- Searcher: Qwen Patent Creator
 - Date: [Date]
 - Databases: Google Patents (SerpApi), EPO OPS or BigQuery, whichever actually answered, plus research papers
 - Conclusion: [Patentability assessment]
@@ -221,7 +221,7 @@ prior-art-search-[date]/
 **Must Have** (one of):
 1. **A free SerpApi key** (recommended): README Quick Start, Step 3.
 2. **EPO OPS** (fallback): configure `EPO_OPS_KEY` and `EPO_OPS_SECRET`, then check `check_epo_api_status`. Supports worldwide title/abstract and CPC/IPC searches.
-3. **BigQuery**: a Google Cloud project, `gcloud auth application-default login`, and `~/patent-creator-venv/bin/patent-creator config set GOOGLE_CLOUD_PROJECT your-project-id`. Optional: the CPC classification step runs through Google Patents (`CPC=<code>` queries) with only the SerpApi key.
+3. **BigQuery**: a Google Cloud project, `gcloud auth application-default login`, and `~/qwen-patent-creator-venv/bin/qwen-patent-creator config set GOOGLE_CLOUD_PROJECT your-project-id`. Optional: the CPC classification step runs through Google Patents (`CPC=<code>` queries) with only the SerpApi key.
 
 **Optional**:
 - USPTO API key (application metadata supplement only)

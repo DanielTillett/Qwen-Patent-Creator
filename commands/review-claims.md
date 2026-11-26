@@ -1,6 +1,6 @@
 ---
 description: Analyze patent claims for 35 USC 112(b) compliance - antecedent basis, definiteness, and claim structure
-allowed-tools: Bash, Read, Write
+tools: bash, read, write
 ---
 
 # Review Patent Claims
@@ -342,7 +342,7 @@ Antecedent basis ran only if `antecedent_basis` appears in `checks_run`.
 
 **Python Environment**:
 - Python 3.10-3.13
-- Access to ${CLAUDE_PLUGIN_ROOT}
+- The `mcp_server` package installed (module `mcp_server.claims_analyzer`)
 - Claims analyzer module
 
 **No external dependencies** - runs locally
