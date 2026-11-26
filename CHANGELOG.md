@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-26
+
+### Changed
+- Fork identity: the package, console script and app-data folder are `qwen-patent-creator`
+  instead of `claude-patent-creator`, so the fork can be installed alongside upstream's
+  plugin without the two setup commands writing the same MCP server entry. `mcp_server` is
+  still the import package, so upstream and the fork cannot share one environment.
+- Setup registers the server per client (`--client claude|opencode|qwen-code|auto|none`,
+  `--scope user|project`), and `verify-config` reports the command for the client in use.
+  `--client none` writes nothing and exits 0, so a non-interactive install that registers no
+  client is not a failure.
+- HyDE can call a Qwen endpoint (`HYDE_API_PROVIDER=qwen`, `QWEN_API_KEY`), and `HYDE_STRICT=true`
+  reports an API failure instead of silently falling back to the heuristic expansion.
+- Docs and tool docstrings that assumed Claude Code are client-neutral, since the engine serves
+  any MCP client; `AGENTS.md` now lists the verification command each client uses.
+
+### Added
+- The canonical `skills/`, `agents/` and `commands/` are client-neutral source, and
+  `scripts/build_plugin_targets.py` generates the committed `.opencode/` and `.qwen/` trees
+  from them in each client's frontmatter, tool vocabulary and argument syntax. CI checks the
+  committed trees still match the source.
+- Hooks are ported to Qwen Code's `settings.json`; OpenCode has no settings-file hook to generate (its hooks are plugin code), so the
+  generated OpenCode tree carries none.
+- `CLAUDE.md` is `AGENTS.md`, the file clients read for project instructions.
+- `docs/QWEN_ADAPTATION_PLAN.md` records the plan and its acceptance criteria, and
+  `tests/test_acceptance.py` checks each criterion as far as a test run can observe it; the plan
+  marks the halves that need an installed client or a live agent run as manual.
+
+### Removed
+- `.claude-plugin/plugin.json` and `marketplace.json`: the fork serves Claude Code through the
+  MCP tools only. Use upstream for the Claude Code plugin layer.
+
 ## [0.3.3] - 2026-11-17
 
 ### Changed

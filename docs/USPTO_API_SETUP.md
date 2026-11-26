@@ -1,6 +1,6 @@
 # USPTO Open Data Portal API Setup
 
-> **Commands on this page** assume `patent-creator` is on your PATH. With the README's install, type `~/patent-creator-venv/bin/patent-creator` instead (Windows PowerShell: `& "$HOME\patent-creator-venv\Scripts\patent-creator.exe"`). Keys and settings are easiest to save with `patent-creator config set KEY VALUE`; an environment variable overrides a saved value.
+> **Commands on this page** assume `qwen-patent-creator` is on your PATH. With the README's install, type `~/qwen-patent-creator-venv/bin/qwen-patent-creator` instead (Windows PowerShell: `& "$HOME\qwen-patent-creator-venv\Scripts\qwen-patent-creator.exe"`). Keys and settings are easiest to save with `qwen-patent-creator config set KEY VALUE`; an environment variable overrides a saved value.
 
 Complete guide for setting up the USPTO Open Data Portal API to access 11M+ patents in real-time.
 
@@ -67,7 +67,7 @@ Use the startup file for the shell you actually run. Alternatively, save the key
 
 ### 5. Verify Connection
 
-Restart Claude Code, then ask it: "Check the USPTO API status". That runs the `check_uspto_api_status` tool, which reports whether the key is set and whether the USPTO answered. (`patent-creator status` checks the local install only, not the USPTO.)
+Restart your client, then ask it: "Check the USPTO API status". That runs the `check_uspto_api_status` tool, which reports whether the key is set and whether the USPTO answered. (`qwen-patent-creator status` checks the local install only, not the USPTO.)
 
 ## Usage
 

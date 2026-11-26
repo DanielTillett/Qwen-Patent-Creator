@@ -1,4 +1,4 @@
-# Contributing to Claude Patent Creator
+# Contributing to Qwen Patent Creator
 
 Thank you for your interest in contributing! This guide covers the essentials.
 
@@ -6,8 +6,8 @@ Thank you for your interest in contributing! This guide covers the essentials.
 
 ```bash
 # Clone and set up
-git clone https://github.com/RobThePCGuy/Claude-Patent-Creator.git
-cd Claude-Patent-Creator
+git clone https://github.com/DanielTillett/Qwen-Patent-Creator.git
+cd Qwen-Patent-Creator
 python -m venv venv
 venv\Scripts\activate  # Windows
 source venv/bin/activate  # Linux/macOS
@@ -16,8 +16,25 @@ source venv/bin/activate  # Linux/macOS
 pip install -e ".[dev]"
 
 # Install PyTorch with GPU support (if applicable)
-patent-creator setup
+qwen-patent-creator setup
 ```
+
+## Plugin Layer
+
+Skills, agents and slash commands have one canonical source in `skills/`, `agents/` and `commands/`, written in
+client-neutral frontmatter (a single `tools:` field, no `model:`). `scripts/build_plugin_targets.py` generates the
+per-client trees the clients actually read — `.opencode/` for OpenCode and `.qwen/` for Qwen Code CLI — including the
+per-client tool names, argument syntax and hooks.
+
+Edit the canonical files, then run:
+
+```bash
+python scripts/build_plugin_targets.py        # regenerate
+python scripts/build_plugin_targets.py --check  # CI does this; fails on drift
+```
+
+Commit the regenerated trees with the canonical change. Do not hand-edit `.opencode/` or `.qwen/`. The canonical
+frontmatter rules are in `docs/QWEN_ADAPTATION_PLAN.md` §4.
 
 ## Branch Naming
 
@@ -93,7 +110,7 @@ Follow the existing pattern in `mcp_server/tools/`:
 @validate_input(YourInputModel)  # Pydantic v2 model
 @track_performance
 def your_tool(param: str) -> dict:
-    """Tool description (Claude sees this docstring)."""
+    """Tool description (the client sees this docstring)."""
     return {"result": "data"}
 ```
 

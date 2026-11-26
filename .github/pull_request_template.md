@@ -50,5 +50,5 @@ Fixes #(issue number)
 ## Documentation Updates
 
 - [ ] README.md updated
-- [ ] CLAUDE.md updated
+- [ ] AGENTS.md updated
 - [ ] CHANGELOG.md updated (if applicable)

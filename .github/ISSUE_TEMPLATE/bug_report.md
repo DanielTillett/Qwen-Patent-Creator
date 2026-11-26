@@ -45,7 +45,7 @@ Paste error messages here
 - PyTorch version: <!-- Run `pip show torch` -->
 
 **Installation Method:**
-- [ ] Installed via `pip install git+...` and `patent-creator setup`
+- [ ] Installed via `pip install git+...` and `qwen-patent-creator setup`
 - [ ] Manual installation
 - [ ] Other (please specify):
 
@@ -61,10 +61,10 @@ Paste error messages here
 
 ## System Status
 
-<!-- Run `patent-creator health` and paste the output -->
+<!-- Run `qwen-patent-creator health` and paste the output -->
 
 ```
-Paste `patent-creator health` output here
+Paste `qwen-patent-creator health` output here
 ```
 
 ## Logs

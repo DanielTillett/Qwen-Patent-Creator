@@ -1,28 +1,21 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Project documentation for Qwen Patent Creator. It also serves as the agent instruction file for clients that read
+one (OpenCode, Qwen Code CLI, Claude Code).
 
 ## Quick Start
-
-### As a Claude Code Plugin (Recommended)
-
-```bash
-# In Claude Code — add the marketplace and install the plugin
-/plugin marketplace add RobThePCGuy/Claude-Patent-Creator
-/plugin install claude-patent-creator-standalone@claude-patent-creator
-```
 
 ### As a pip Package (MCP Server Mode)
 
 ```bash
 # One-line install (works with or without venv)
-pip install git+https://github.com/RobThePCGuy/Claude-Patent-Creator.git && patent-creator setup
+pip install git+https://github.com/DanielTillett/Qwen-Patent-Creator.git && qwen-patent-creator setup
 
-# Restart Claude Code
+# Restart your client
 
 # Test the system
-# Ask Claude: "Search MPEP for claim definiteness requirements"
-# Ask Claude: "Search for patents about neural networks filed in 2024"
+# Ask the client: "Search MPEP for claim definiteness requirements"
+# Ask the client: "Search for patents about neural networks filed in 2024"
 ```
 
 **What happens automatically:**
@@ -32,15 +25,27 @@ pip install git+https://github.com/RobThePCGuy/Claude-Patent-Creator.git && pate
 4. Installs correct PyTorch (CUDA 12.8/MPS/CPU)
 5. Restarts setup in subprocess with GPU-enabled PyTorch
 6. Downloads MPEP PDFs and builds index with GPU acceleration
-7. Registers MCP server with Claude Code
+7. Registers the MCP server with your client (`--client claude|opencode|qwen-code|auto|none`,
+   `--scope user|project`) and checks the connection
 
 **Optional: Use venv if preferred**
 ```bash
 python -m venv venv
 venv\Scripts\activate  # Windows
 source venv/bin/activate  # Linux/macOS
-pip install git+https://github.com/RobThePCGuy/Claude-Patent-Creator.git && patent-creator setup
+pip install git+https://github.com/DanielTillett/Qwen-Patent-Creator.git && qwen-patent-creator setup
 ```
+
+The guided workflows (skills, agents, slash commands) are prompt files read from the checkout, not from the
+installed package. Run the client inside a copy of this repository, or copy the generated tree into its global
+settings directory:
+
+- **OpenCode:** `.opencode/agents`, `.opencode/commands`, `.opencode/skills`
+- **Qwen Code CLI:** `.qwen/agents`, `.qwen/commands`, `.qwen/skills`, hooks in `.qwen/settings.json`
+- **Claude Code:** this fork ships no Claude plugin layer, so Claude gets the MCP tools only
+
+The trees come from the canonical `skills/`, `agents/` and `commands/` sources via
+`scripts/build_plugin_targets.py`; run it after editing a canonical file.
 
 **What you can do now:**
 - Search 100M+ patents via BigQuery (worldwide)
@@ -55,7 +60,7 @@ pip install git+https://github.com/RobThePCGuy/Claude-Patent-Creator.git && pate
 
 ## Project Overview
 
-**Claude Patent Creator** - An MCP server providing USPTO MPEP-based patent creation guidance using RAG (Retrieval Augmented Generation).
+**Qwen Patent Creator** - An MCP server providing USPTO MPEP-based patent creation guidance using RAG (Retrieval Augmented Generation). Fork of [Claude-Patent-Creator](https://github.com/RobThePCGuy/Claude-Patent-Creator); the engine is client-neutral, and the guided workflows are generated per client for OpenCode and Qwen Code CLI.
 
 ### Core Capabilities
 
@@ -96,7 +101,8 @@ MCP Python SDK 2.x (MCPServer)
 
 ## Skills System
 
-Claude will automatically activate specialized skills based on your task. These skills provide deep expertise for specific workflows:
+The client automatically activates specialized skills based on the task (OpenCode, Qwen Code or any agent that reads
+`skills/`). These skills provide deep expertise for specific workflows:
 
 | Skill | Activate When | What It Provides |
 |-------|---------------|------------------|
@@ -154,9 +160,11 @@ or MCP-backed skills omit `tools:` so they inherit tools available in the
 parent session. The local Python-only drafter and development
 agents retain their built-in tool lists. Inheritance does not install or
 connect a missing server; report required tools as unavailable when absent.
-See [Claude Code subagent tool access](https://code.claude.com/docs/en/sub-agents#available-tools).
-An explicit MCP allowlist would require the resolved `mcp__<server>__<tool>`
-names (or `mcp__<server>__*`); bare function names are not MCP tool names.
+
+When an agent does name tools, the generator writes them in the form each client resolves:
+Qwen Code wants `mcp__<server>__<tool>` (or `mcp__<server>__*`), OpenCode wants the permission
+action `<server>_<tool>`. Bare function names are not MCP tool names in either client, so the
+canonical source keeps neutral tool names and `scripts/build_plugin_targets.py` does the mapping.
 
 ---
 
@@ -213,9 +221,13 @@ Quick-access workflows for common patent tasks:
 ### Directory Structure
 
 ```
-.claude-plugin/          # Plugin marketplace + manifest
-+-- plugin.json          # Plugin identity and component paths
-+-- marketplace.json     # Marketplace catalog for distribution
+skills/                  # Canonical skills (client-neutral source)
+agents/                  # Canonical agents
+commands/                # Canonical slash commands
+hooks/hooks.json         # Hook definitions, generated into .qwen/settings.json
+.opencode/               # Generated for OpenCode: agents, commands, skills
+.qwen/                   # Generated for Qwen Code: agents, commands, skills, settings.json
+scripts/build_plugin_targets.py  # Canonical -> per-client trees
 
 mcp_server/              # Core MCP server and tools
 +-- server.py            # MCPServer entry point (main)
@@ -253,7 +265,7 @@ pdfs/                    # MPEP/USC/CFR PDFs (git-ignored)
 
 ### PyTorch Installation Order (CRITICAL)
 
-Use the README pip installation and `patent-creator setup` in that venv. Setup selects PyTorch using the detected GPU architecture. See `docs/GPU_SETUP.md` for installed-path commands and a CUDA execution check; a generic CUDA 12.8 wheel does not support every NVIDIA card.
+Use the README pip installation and `qwen-patent-creator setup` in that venv. Setup selects PyTorch using the detected GPU architecture. See `docs/GPU_SETUP.md` for installed-path commands and a CUDA execution check; a generic CUDA 12.8 wheel does not support every NVIDIA card.
 
 ### Windows Path Handling in MCP Config
 
@@ -282,10 +294,10 @@ source venv/bin/activate  # Linux/macOS
 
 # Then run commands:
 python scripts/test_gpu.py
-patent-creator health
+qwen-patent-creator health
 ```
 
-**Note:** Claude Code activates venv automatically. This only matters for manual terminal operations.
+**Note:** some clients activate the venv for you (Claude Code does). This only matters for manual terminal operations.
 
 ### NumPy Version Requirements
 
@@ -334,12 +346,12 @@ unchanged. From a source checkout, use this launch command in place of the
 existing server command, retaining the existing environment settings:
 
 ```text
-/absolute/path/to/venv/bin/python /absolute/path/to/Claude-Patent-Creator/scripts/legacy_handshake_shim.py -- /absolute/path/to/venv/bin/patent-creator serve
+/absolute/path/to/venv/bin/python /absolute/path/to/Qwen-Patent-Creator/scripts/legacy_handshake_shim.py -- /absolute/path/to/venv/bin/qwen-patent-creator serve
 ```
 
 In a JSON MCP configuration, set `command` to the Python path and `args` to
-the shim path, `"--"`, the `patent-creator` executable path and `"serve"`.
-Use the corresponding `Scripts/python.exe` and `Scripts/patent-creator.exe`
+the shim path, `"--"`, the `qwen-patent-creator` executable path and `"serve"`.
+Use the corresponding `Scripts/python.exe` and `Scripts/qwen-patent-creator.exe`
 paths on Windows. This is an opt-in compatibility workaround; the regular
 server registration is unchanged. Remove the wrapper after verifying that
 your updated client connects without it. Subprocess tests verify forwarding
@@ -354,8 +366,20 @@ missing models; omit them when initially setting up or changing models.
 
 **Enable debug logging:**
 ```bash
-PATENT_LOG_LEVEL=DEBUG patent-creator health
+PATENT_LOG_LEVEL=DEBUG qwen-patent-creator health
 ```
+
+**Confirm the registration with the client's own list** — this is the check that a setup run
+cannot make on its own, because it reads the client's view rather than the file we wrote:
+
+```bash
+opencode mcp list        # or /mcps inside OpenCode
+qwen mcp list            # or /mcp inside Qwen Code
+claude mcp list
+```
+
+The files each client reads are `~/.config/opencode/opencode.jsonc` (or the project's
+`opencode.jsonc` for `--scope project`), `~/.qwen/settings.json`, and `~/.claude.json`.
 
 **Claude Code MCP logs:**
 ```
@@ -388,16 +412,16 @@ claude --debug
 
 ```bash
 # System health check
-patent-creator health
+qwen-patent-creator health
 
 # Rebuild MPEP index
-patent-creator rebuild-index
+qwen-patent-creator rebuild-index
 
 # Verify MCP configuration
-patent-creator verify-config
+qwen-patent-creator verify-config
 
 # Check BigQuery authentication
-patent-creator check-bigquery
+qwen-patent-creator check-bigquery
 
 # Test GPU
 python scripts/test_gpu.py
@@ -418,10 +442,11 @@ python scripts/test_install.py
 | **MPEP PDFs** | `pdfs/` | Downloaded USPTO documents |
 | **Dependencies** | `pyproject.toml` | All package requirements |
 | **Configuration** | `.env` | Environment variables |
-| **CLI Tool** | `mcp_server/cli.py` | `patent-creator` command |
-| **Skills** | `.claude/skills/` | Specialized skill documentation |
-| **Subagents** | `agents/` | Autonomous workflow subagents |
-| **Commands** | `.claude/commands/` | Slash command definitions |
+| **CLI Tool** | `mcp_server/cli.py` | `qwen-patent-creator` command |
+| **Registration** | `mcp_server/registration.py` | Per-client MCP registration (claude / opencode / qwen-code) |
+| **Skills** | `skills/` (canonical), `.opencode/skills` and `.qwen/skills` (generated) | Specialized skill documentation |
+| **Subagents** | `agents/` (canonical), `.opencode/agents` and `.qwen/agents` (generated) | Autonomous workflow subagents |
+| **Commands** | `commands/` (canonical), `.opencode/commands` and `.qwen/commands` (generated) | Slash command definitions |
 
 ### Environment Variables
 
@@ -472,7 +497,7 @@ CLAUDE_CODE_GIT_BASH_PATH=C:\dev\Git\bin\bash.exe
 @mcp.tool()
 @track_performance("your_tool")
 def your_tool(param: str) -> dict:
-    """Tool description for Claude. Define YourInputModel with a param field first."""
+    """Tool description for the client's model. Define YourInputModel with a param field first."""
     validated = validate_input(YourInputModel, param=param)
     return {"result": validated.param}
 ```
@@ -511,8 +536,8 @@ Each skill contains comprehensive reference documentation and step-by-step workf
 ## Best Practices
 
 1. **Always activate venv for manual operations** (Claude Code handles automatically)
-2. **Use `patent-creator` CLI for system operations** (health, rebuild, verify)
-3. **Test with `patent-creator health` after changes**
+2. **Use `qwen-patent-creator` CLI for system operations** (health, rebuild, verify)
+3. **Test with `qwen-patent-creator health` after changes**
 4. **Add performance monitoring to expensive operations** (`@track_performance("operation_name")`)
 5. **Use Pydantic validation for all new MCP tools** (type safety + errors)
 6. **Include MPEP citations in error messages** when relevant

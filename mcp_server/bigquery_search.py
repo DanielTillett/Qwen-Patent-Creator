@@ -1150,7 +1150,7 @@ class BigQueryPatentSearch:
 
         Delegates to the config layer (env > config file > default, schema
         minimum enforced) so this knob cannot diverge from what
-        ``patent-creator config`` validates and documents. Falls back to
+        ``qwen-patent-creator config`` validates and documents. Falls back to
         env-only parsing when the config module is unavailable. An explicitly
         set but invalid value raises BigQueryConfigError (fail closed).
         """

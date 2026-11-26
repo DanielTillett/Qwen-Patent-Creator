@@ -11,7 +11,7 @@
 
 **Do not open a public issue for security vulnerabilities.**
 
-Use [GitHub Security Advisories](https://github.com/RobThePCGuy/Claude-Patent-Creator/security/advisories/new) to report vulnerabilities privately.
+Use [GitHub Security Advisories](https://github.com/DanielTillett/Qwen-Patent-Creator/security/advisories/new) to report vulnerabilities privately.
 
 ### Response Timeline
 

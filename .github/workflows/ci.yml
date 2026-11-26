@@ -10,9 +10,10 @@ permissions:
 
 jobs:
   plugin-version-guard:
-    # Merged skill/agent/command changes reach installed users only through
-    # `claude plugin update`, which compares versions — a PR that changes
-    # plugin content without bumping the version ships to nobody, silently.
+    # Plugin content reaches installed users only when they reinstall or update,
+    # and the version they compare against is the package version in
+    # pyproject.toml — a PR that changes plugin content without raising it
+    # leaves every existing install looking current.
     name: Plugin version bumped when plugin content changes
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -25,18 +26,34 @@ jobs:
         run: |
           BASE="origin/${{ github.base_ref }}"
           git fetch -q origin "${{ github.base_ref }}"
-          CHANGED=$(git diff --name-only "$BASE"...HEAD -- skills/ agents/ commands/ hooks/ | wc -l)
+          CHANGED=$(git diff --name-only "$BASE"...HEAD -- skills/ agents/ commands/ hooks/ .opencode/ .qwen/ | wc -l)
           if [ "$CHANGED" -eq 0 ]; then
             echo "No plugin content changed; guard passes."
             exit 0
           fi
-          if git diff "$BASE"...HEAD -- .claude-plugin/marketplace.json | grep -q '"version"'; then
-            echo "Plugin content changed and marketplace version bumped; guard passes."
+          if git diff "$BASE"...HEAD -- pyproject.toml | grep -q '^+version = '; then
+            echo "Plugin content changed and the version was bumped; guard passes."
             exit 0
           fi
-          echo "::error::skills/agents/commands/hooks changed but .claude-plugin/marketplace.json version did not."
-          echo "Bump the version in .claude-plugin/marketplace.json (and plugin.json) or installed users never receive this change."
+          echo "::error::plugin content changed but the package version did not."
+          echo "Raise [project].version in pyproject.toml and add a CHANGELOG section, or installed users never receive this change."
           exit 1
+
+  plugin-trees-current:
+    # .opencode/ and .qwen/ are generated from the canonical plugin source by
+    # scripts/build_plugin_targets.py. If they are committed stale, clients read
+    # a different plugin than the source of truth.
+    name: Generated client plugin trees match the canonical source
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Check generated trees
+        run: python scripts/build_plugin_targets.py --check
 
   package-version-guard:
     # Apps that install these tools (Patent Creator Studio among them) decide
@@ -85,7 +102,7 @@ jobs:
         run: ruff check .
 
       - name: Compile-check the package
-        run: python -m compileall -q mcp_server skills setup.py
+        run: python -m compileall -q mcp_server skills scripts setup.py
 
       - name: Run tests
         env:

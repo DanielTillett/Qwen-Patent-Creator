@@ -1,4 +1,4 @@
-# Claude Patent Creator
+# Qwen Patent Creator
 
 [![MIT License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Python 3.10-3.13](https://img.shields.io/badge/python-3.10--3.13-blue.svg)](https://www.python.org/downloads/)
@@ -6,7 +6,13 @@
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.9+-red.svg)](https://pytorch.org/)
 [![Status](https://img.shields.io/badge/status-beta%20(WIP)-orange.svg)](#project-status)
 
-**An AI-powered patent creation and analysis system for Claude Code.**
+**An AI-powered patent creation and analysis system for MCP clients: OpenCode, Qwen Code CLI and Claude Code.**
+
+This is a fork of [RobThePCGuy/Claude-Patent-Creator](https://github.com/RobThePCGuy/Claude-Patent-Creator). The
+search, analysis and diagram engine is unchanged: it never calls a model API, so any MCP client works. What this fork
+changes is who the client can be — the guided workflows (skills, agents, slash commands) are kept in one canonical
+source and generated per client for OpenCode and Qwen Code, and setup registers the server with whichever client you
+use. [docs/QWEN_ADAPTATION_PLAN.md](docs/QWEN_ADAPTATION_PLAN.md) records the decisions.
 
 > **New: [Patent Creator Studio](#the-easy-way-patent-creator-studio), a free desktop app for Mac and Windows.** Everything below, with no terminal and no Python setup. [Download it here](https://github.com/PatentCreatorStudio/Patent-Creator-Studio/releases).
 
@@ -80,10 +86,10 @@ This takes about an hour, most of it waiting while the tool downloads the patent
 
 | You need | How to check or get it |
 |---|---|
-| **Claude Code** with a paid Claude plan | Anthropic's AI assistant. [Install it](https://claude.com/claude-code), sign in, and open it once. |
+| **An MCP client** | One of [OpenCode](https://opencode.ai/docs/), [Qwen Code CLI](https://github.com/QwenLM/qwen-code) or Claude Code, with a model plan for it. OpenCode and Qwen Code get the guided workflows; Claude Code gets the tools. Type the client's command (`opencode`, `qwen`, or `claude`) to check it is installed, then open it once. |
 | **A terminal** | The window where you type commands. Mac: press Cmd+Space, type `Terminal`, press Enter. Windows: press Start, type `PowerShell`, press Enter. |
 | **Python 3.10 to 3.13** | In the terminal, type `python3 --version` (Mac/Linux) or `py --version` (Windows). If it says 3.9 or older, or "not found", install Python 3.13 from [python.org/downloads](https://www.python.org/downloads/) and open a new terminal. On Windows, tick "Add python.exe to PATH" in the installer. |
-| **git** | Type `git --version`. On a Mac that has never used it, a box offers to install "command line developer tools": click Install. Windows: install [Git for Windows](https://git-scm.com/download/win) (Claude Code needs it on Windows anyway). |
+| **git** | Type `git --version`. On a Mac that has never used it, a box offers to install "command line developer tools": click Install. Windows: install [Git for Windows](https://git-scm.com/download/win) (pip uses it to fetch this tool, and Claude Code needs Git Bash on Windows). |
 | **About 4 GB of free disk space** | The tool itself is about 2 GB; the rulebook and index add about 1 GB. |
 
 ### Step 1: Install the tool
@@ -94,18 +100,18 @@ Copy these lines into the terminal one at a time, pressing Enter after each. The
 
 ```bash
 cd ~
-python3 -m venv patent-creator-venv
-patent-creator-venv/bin/pip install git+https://github.com/RobThePCGuy/Claude-Patent-Creator.git
-patent-creator-venv/bin/patent-creator setup
+python3 -m venv qwen-patent-creator-venv
+qwen-patent-creator-venv/bin/pip install git+https://github.com/DanielTillett/Qwen-Patent-Creator.git
+qwen-patent-creator-venv/bin/qwen-patent-creator setup
 ```
 
 **Windows (PowerShell):**
 
 ```powershell
 cd ~
-py -m venv patent-creator-venv
-.\patent-creator-venv\Scripts\pip install git+https://github.com/RobThePCGuy/Claude-Patent-Creator.git
-.\patent-creator-venv\Scripts\patent-creator setup
+py -m venv qwen-patent-creator-venv
+.\qwen-patent-creator-venv\Scripts\pip install git+https://github.com/DanielTillett/Qwen-Patent-Creator.git
+.\qwen-patent-creator-venv\Scripts\qwen-patent-creator setup
 ```
 
 The install line takes about a minute. `setup` then runs for 5 to 45 minutes (45 on a laptop without an NVIDIA graphics card, including Apple Silicon Macs). It asks three questions:
@@ -114,22 +120,23 @@ The install line takes about a minute. `setup` then runs for 5 to 45 minutes (45
 - **Install Graphviz?** Say yes if you want patent drawings. It's a free program the diagram tools need.
 - **Set up BigQuery?** Say no for now. It's an optional patent search that needs a Google Cloud account; Step 3 covers the easier option.
 
-It finishes by connecting itself to Claude Code and testing that connection. If you see **Setup Complete!**, go on. If it says Claude Code is **not connected**, the lines above that message say why.
+Setup then registers the server with your client and tests that connection. It works out which client you have from the shell, or you can name it: `setup --client opencode --scope project`, with `claude`, `opencode`, `qwen-code`, `auto` or `none` for `--client` and `user` or `project` for `--scope`. `--client none` skips registration and leaves the files alone, which is the variant the cold-install acceptance run uses. If you see **Setup Complete!**, go on; if a client is **not connected**, the lines above that message say why.
 
-### Step 2: Add the guided workflows to Claude Code
+### Step 2: Get the guided workflows
 
-Step 1 gives Claude the tools. This step adds the guided workflows, like `/create-patent`. Open Claude Code and type these two lines into Claude (not the terminal):
+Step 1 gives your client the tools. The guided workflows, like `/create-patent`, are prompt files the client reads, so they come from the checkout rather than from an installed package: run the client inside a copy of this repository, and it picks up the generated trees.
 
-```
-/plugin marketplace add RobThePCGuy/Claude-Patent-Creator
-/plugin install claude-patent-creator-standalone@claude-patent-creator
-```
+- **OpenCode:** `.opencode/agents`, `.opencode/commands`, `.opencode/skills`
+- **Qwen Code CLI:** `.qwen/agents`, `.qwen/commands`, `.qwen/skills`, and the hooks in `.qwen/settings.json`
+- **Claude Code:** this fork ships no Claude plugin layer, so Claude gets the tools only; use the upstream repository if you want the Claude plugin.
 
-Quit Claude Code completely and open it again. Then ask it:
+The trees are generated from the canonical source in `skills/`, `agents/` and `commands/` by `scripts/build_plugin_targets.py`, so OpenCode and Qwen Code read the same prompts in the shape each one expects. To use the workflows outside this checkout, put the generated tree in the client's global directory: OpenCode reads `~/.config/opencode/agents`, `commands` and `skills`, and Qwen Code reads `~/.qwen/agents`, `commands` and `skills`. Do not overwrite an existing `~/.qwen/settings.json`, which is a single file that already holds your settings — merge the `hooks` block from the generated `.qwen/settings.json` into it instead.
+
+Open the client and ask it:
 
 > Search MPEP for claim definiteness requirements
 
-You should get rule excerpts, each labeled with the MPEP chapter, the PDF file and the page it came from. That means everything is connected.
+You should get rule excerpts, each labeled with the MPEP chapter, the PDF file and the page it came from. That means everything is connected. Confirm the server is registered with the client's own list: `opencode mcp list` (or `/mcps`), `qwen mcp list` (or `/mcp`), `claude mcp list`.
 
 ### Step 3: Turn on patent search (free key)
 
@@ -138,9 +145,9 @@ Rule search, claim checks and research-paper search work now with no keys, and s
 1. Sign up at [serpapi.com](https://serpapi.com/users/sign_up) (250 free searches a month).
 2. Copy your key from [serpapi.com/manage-api-key](https://serpapi.com/manage-api-key).
 3. In the terminal, save it (replace `YOUR_KEY`):
-   - Mac/Linux: `~/patent-creator-venv/bin/patent-creator config set SERPAPI_API_KEY "YOUR_KEY"`
-   - Windows: `.\patent-creator-venv\Scripts\patent-creator config set SERPAPI_API_KEY "YOUR_KEY"` (run `cd ~` first)
-4. Restart Claude Code.
+   - Mac/Linux: `~/qwen-patent-creator-venv/bin/qwen-patent-creator config set SERPAPI_API_KEY "YOUR_KEY"`
+   - Windows: `.\qwen-patent-creator-venv\Scripts\qwen-patent-creator config set SERPAPI_API_KEY "YOUR_KEY"` (run `cd ~` first)
+4. Restart your client.
 
 If Google Patents is not ready, configured EPO OPS is a patent-search fallback: save `EPO_OPS_KEY` and `EPO_OPS_SECRET` from [developers.epo.org](https://developers.epo.org/) with the same `config set` command, restart, and run `check_epo_api_status`. OPS searches worldwide titles/abstracts and classifications; full text is available for selected publications. BigQuery is another optional provider. USPTO ODP searches application metadata and is a supplement only.
 
@@ -150,7 +157,7 @@ Now ask: *"Is my idea of a self-heating coffee mug new?"*
 
 | Part | Cost |
 |---|---|
-| Claude Code | Your paid Claude plan. This is the only required cost. |
+| Your MCP client and model | Your plan for OpenCode, Qwen Code CLI or Claude Code. This is the only required cost. |
 | Rule search, claim and formality checks, drawings | Free, runs on your computer |
 | Research-paper search (OpenAlex, arXiv, Semantic Scholar) | Free, no key needed |
 | Patent search through SerpApi (Google Patents) | Free for 250 searches a month |
@@ -160,28 +167,32 @@ Now ask: *"Is my idea of a self-heating coffee mug new?"*
 
 Run the health check. It says what's working and what to fix:
 
-- Mac/Linux: `~/patent-creator-venv/bin/patent-creator health`
-- Windows: `.\patent-creator-venv\Scripts\patent-creator health` (from `cd ~`)
+- Mac/Linux: `~/qwen-patent-creator-venv/bin/qwen-patent-creator health`
+- Windows: `.\qwen-patent-creator-venv\Scripts\qwen-patent-creator health` (from `cd ~`)
 
-To test the connection to Claude Code, starting the tool exactly the way Claude does:
+To test the connection, starting the tool exactly the way your client does:
 
-- Mac/Linux: `~/patent-creator-venv/bin/patent-creator verify-config`
-- Windows: `.\patent-creator-venv\Scripts\patent-creator verify-config` (from `cd ~`)
+- Mac/Linux: `~/qwen-patent-creator-venv/bin/qwen-patent-creator verify-config`
+- Windows: `.\qwen-patent-creator-venv\Scripts\qwen-patent-creator verify-config` (from `cd ~`)
+
+`verify-config` checks the client you name with `--client` (default `auto`), and prints what that client's own list command is.
 
 <details>
 <summary><strong>Other ways to install</strong></summary>
 
-**Let Claude do the install.** After Step 2, type `/claude-patent-creator-standalone:setup-patent-system` in Claude Code. Claude makes the private folder, installs and runs setup for you. Skip this if you already did Step 1.
+**Let the client do the install.** Run the client inside a copy of this repository and ask it for the setup workflow: `/setup-patent-system` in OpenCode or Qwen Code. It makes the private folder, installs and runs setup for you. Skip this if you already did Step 1.
 
 **From a copy of the code** (for people changing the code):
 
 ```bash
-git clone https://github.com/RobThePCGuy/Claude-Patent-Creator.git
-cd Claude-Patent-Creator
+git clone https://github.com/DanielTillett/Qwen-Patent-Creator.git
+cd Qwen-Patent-Creator
 python3 -m venv venv
 venv/bin/pip install -e .
-venv/bin/patent-creator setup
+venv/bin/qwen-patent-creator setup
 ```
+
+Run `python3 scripts/build_plugin_targets.py` after editing the canonical `skills/`, `agents/` or `commands/` files; the CI job `plugin-trees-current` fails if the generated `.opencode/` and `.qwen/` trees no longer match them.
 
 On a Mac, a bare `pip install ...` outside a private folder fails with `externally-managed-environment`. That's macOS protecting its own Python. Use the steps above; don't use `--break-system-packages`.
 
@@ -191,7 +202,7 @@ On a Mac, a bare `pip install ...` outside a private folder fails with `external
 
 ## What Can I Actually Do With This?
 
-Here are some real examples. You can type these directly in Claude Code and the right skill or tool kicks in automatically. Say it in your own words; the "what to say" column is a starting point, not a required incantation.
+Here are some real examples. You can type these directly in your client and the right skill or tool kicks in automatically. Say it in your own words; the "what to say" column is a starting point, not a required incantation.
 
 | What you want to do | What to say | What happens |
 |---|---|---|
@@ -211,29 +222,29 @@ Here are some real examples. You can type these directly in Claude Code and the 
 
 The system has two modes that can work independently or together:
 
-**MCP Server** is the engine. It exposes 20+ tools that any MCP-compatible client (Claude Code, Claude Desktop, etc.) can call programmatically. These tools handle search, analysis, and diagram generation.
+**MCP Server** is the engine. It exposes 20+ tools that any MCP-compatible client (OpenCode, Qwen Code CLI, Claude Code, Claude Desktop) can call programmatically. These tools handle search, analysis, and diagram generation. The engine never calls a model API itself, so the client choice does not affect it — the only exception is the opt-in HyDE query expansion (`HYDE_BACKEND=api` with `PATENT_MPEP_USE_HYDE=true`), which can use a Qwen, OpenAI or Anthropic key.
 
-**Claude Code Plugin** adds the interactive layer. Skills activate automatically based on what you're doing. Agents handle long-running tasks in the background. Slash commands give you quick access to common workflows.
+**The plugin layer** adds the interactive part: skills activate automatically based on what you're doing, agents handle long-running tasks in the background, and slash commands give quick access to common workflows. The canonical prompts live in `skills/`, `agents/` and `commands/`, and `scripts/build_plugin_targets.py` generates the per-client shape each client reads — `.opencode/` for OpenCode, `.qwen/` for Qwen Code CLI. Claude Code is served by the MCP tools only in this fork.
 
 Under the hood, patent regulation search uses a hybrid approach: FAISS vector search finds semantically similar content, BM25 lexical search catches exact terminology matches, and a cross-encoder reranker sorts the combined results by relevance. Patent keyword search goes through Google Patents via SerpApi (free key, recommended) with EPO OPS as a worldwide title/abstract and classification fallback, or optionally Google BigQuery's public patent dataset.
 
 ```
-You (Claude Code) ──> MCP Server ──> Search / Analysis / Diagrams
-                           │
-            ┌──────────────┼──────────────┐
-            v              v              v
-     MPEP/USC/CFR   Google Patents     Graphviz
-     EPC/PCT        (SerpApi) or        (diagrams)
-     (hybrid RAG)   EPO OPS / BigQuery
-                    + papers (OpenAlex,
-                      arXiv, Semantic Scholar)
+You (OpenCode / Qwen Code / Claude Code) ──> MCP Server ──> Search / Analysis / Diagrams
+                                                 │
+                            ┌────────────────────┼────────────────────┐
+                            v                    v                    v
+                 MPEP/USC/CFR          Google Patents             Graphviz
+                 EPC/PCT              (SerpApi) or               (diagrams)
+                 (hybrid RAG)         EPO OPS / BigQuery
+                                     + papers (OpenAlex,
+                                       arXiv, Semantic Scholar)
 ```
 
 ---
 
 ## What Setup Does
 
-`patent-creator setup` runs these steps. Running it again is safe: it skips anything already done.
+`qwen-patent-creator setup` runs these steps. Running it again is safe: it skips anything already done.
 
 1. Checks your hardware. On an NVIDIA graphics card it installs the GPU version of PyTorch and restarts itself. Apple Silicon and other computers build on the CPU, which is faster than Apple's GPU for this job.
 2. Downloads the MPEP, 35 USC and 37 CFR from the USPTO, and the EPO and PCT rules (about 500 MB).
@@ -241,32 +252,34 @@ You (Claude Code) ──> MCP Server ──> Search / Analysis / Diagrams
 4. Offers to delete the downloaded PDFs. The index keeps working either way.
 5. Asks before installing Graphviz for the diagram tools. It never installs it without a yes.
 6. Looks for existing Google Cloud sign-in for the optional BigQuery search.
-7. Registers the tool with Claude Code, then starts it the way Claude will and checks it answers. It only reports success after that check passes.
+7. Registers the server with your client (`--client claude|opencode|qwen-code|auto|none`, `--scope user|project`), then starts it the way that client will and checks it answers. It only reports success after that check passes. `--client none` skips registration and exits 0.
 
-Data lives in `~/.local/share/claude-patent-creator/data` (Mac/Linux) or `%APPDATA%\claude-patent-creator\data` (Windows); `PATENT_DATA_DIR` moves it. To load the plugin from a local copy of the code instead of the marketplace: `claude --plugin-dir ./Claude-Patent-Creator`.
+Data lives in `~/.local/share/qwen-patent-creator/data` (Mac/Linux) or `%APPDATA%\qwen-patent-creator\data` (Windows); `PATENT_DATA_DIR` moves it. The fork keeps its own folder so it does not share a corpus with an upstream install: the first run downloads about 500 MB again, and `PATENT_DATA_DIR` can point at an existing copy instead. The guided workflows come from the repository, not from the package: run the client inside the checkout, or copy `.opencode/` or `.qwen/` into its global settings directory.
 
 ---
 
 ## CLI Commands
 
-Run these in a terminal. If you followed the Quick Start, put `~/patent-creator-venv/bin/` (Mac/Linux) or `.\patent-creator-venv\Scripts\` (Windows, from `cd ~`) in front of `patent-creator`.
+Run these in a terminal. If you followed the Quick Start, put `~/qwen-patent-creator-venv/bin/` (Mac/Linux) or `.\qwen-patent-creator-venv\Scripts\` (Windows, from `cd ~`) in front of `qwen-patent-creator`.
 
 ```bash
-patent-creator setup             # Full setup: downloads, builds index, connects to Claude Code
-patent-creator setup --rebuild   # Same, but rebuilds the search index from scratch
-patent-creator health            # What's working and what isn't
-patent-creator status            # Same as health
-patent-creator verify-config     # Starts the tool the way Claude Code does and checks it answers
-patent-creator serve             # Run the MCP server by hand
-patent-creator config list       # Show every setting and where its value comes from
-patent-creator config set KEY VALUE   # Save a setting or key (e.g. SERPAPI_API_KEY)
-patent-creator config unset KEY  # Remove a saved setting
-patent-creator config path       # Where saved settings live
-patent-creator config --gui      # Settings window (needs Python's Tkinter)
-patent-creator rebuild-index     # Rebuild the MPEP search index
-patent-creator download-mpep     # Download MPEP PDFs only
-patent-creator download-all      # Download all sources (MPEP + 35 USC + 37 CFR)
-patent-creator check-bigquery    # Test BigQuery connection
+qwen-patent-creator setup             # Full setup: downloads, builds index, registers with your client
+qwen-patent-creator setup --rebuild   # Same, but rebuilds the search index from scratch
+qwen-patent-creator setup --client opencode --scope project  # Register with a named client and scope
+qwen-patent-creator setup --client none --non-interactive    # No registration at all
+qwen-patent-creator health            # What's working and what isn't
+qwen-patent-creator status            # Same as health
+qwen-patent-creator verify-config     # Starts the tool the way your client does and checks it answers
+qwen-patent-creator serve             # Run the MCP server by hand
+qwen-patent-creator config list       # Show every setting and where its value comes from
+qwen-patent-creator config set KEY VALUE   # Save a setting or key (e.g. SERPAPI_API_KEY)
+qwen-patent-creator config unset KEY  # Remove a saved setting
+qwen-patent-creator config path       # Where saved settings live
+qwen-patent-creator config --gui      # Settings window (needs Python's Tkinter)
+qwen-patent-creator rebuild-index     # Rebuild the MPEP search index
+qwen-patent-creator download-mpep     # Download MPEP PDFs only
+qwen-patent-creator download-all      # Download all sources (MPEP + 35 USC + 37 CFR)
+qwen-patent-creator check-bigquery    # Test BigQuery connection
 ```
 
 ---
@@ -369,6 +382,8 @@ These run in the background while you keep working on other things. There are 13
 
 To use them: "Create a patent for [your invention], use the patent-creator agent"
 
+The agent names are the same in every client: OpenCode reads them from `.opencode/agents`, Qwen Code from `.qwen/agents`, and the canonical copies stay in `agents/`.
+
 ### Slash Commands
 
 ```
@@ -388,17 +403,17 @@ To use them: "Create a patent for [your invention], use the patent-creator agent
 /test-system            # Run the system checks
 ```
 
-Installed from the marketplace, each command is also available with the plugin prefix, for example `/claude-patent-creator-standalone:create-patent`.
+Run a command by name in OpenCode or Qwen Code (`/create-patent`), from `.opencode/commands` or `.qwen/commands`. Qwen Code passes the arguments as `{{args}}` and OpenCode as `$ARGUMENTS`; the generator writes each form from the same canonical file, so the prompts stay identical.
 
 ---
 
 ## Configuration
 
-Save settings and keys with the `config` command. They go in one file, `~/.config/claude-patent-creator/config.json` (Mac/Linux) or `%APPDATA%\claude-patent-creator\config.json` (Windows), stored as plain text and readable only by you on Mac/Linux. Restart Claude Code after changing one.
+Save settings and keys with the `config` command. They go in one file, `~/.config/qwen-patent-creator/config.json` (Mac/Linux) or `%APPDATA%\qwen-patent-creator\config.json` (Windows), stored as plain text and readable only by you on Mac/Linux. Restart your client after changing one.
 
 ```bash
-patent-creator config set SERPAPI_API_KEY "your-key"
-patent-creator config list
+qwen-patent-creator config set SERPAPI_API_KEY "your-key"
+qwen-patent-creator config list
 ```
 
 | Setting | What it's for | Where to get it |
@@ -409,13 +424,14 @@ patent-creator config list
 | `SEMANTIC_SCHOLAR_API_KEY` | Steadier Semantic Scholar paper search (works without it) | Free, by request: [semanticscholar.org](https://www.semanticscholar.org/product/api#api-key-form) |
 | `EPO_OPS_KEY`, `EPO_OPS_SECRET` | Worldwide patent search and available full text | Free registration: [developers.epo.org](https://developers.epo.org) |
 | `USPTO_API_KEY` | USPTO Open Data Portal search | [data.uspto.gov](https://data.uspto.gov/myodp) |
+| `QWEN_API_KEY`, `HYDE_QWEN_MODEL` | HyDE query expansion with `HYDE_BACKEND=api` and `PATENT_MPEP_USE_HYDE=true`, using a Qwen model through the DashScope OpenAI-compatible endpoint (change the endpoint with `HYDE_OPENAI_BASE_URL`). Default model `qwen3-coder-flash`; `HYDE_STRICT=true` reports a failed call instead of falling back silently | Your Qwen API account |
 | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` | Only for HyDE query expansion with `HYDE_BACKEND=api` and `PATENT_MPEP_USE_HYDE=true`. Install the optional `llm` extra or run your environment's Python with `-m pip install anthropic openai` first. HyDE is off by default | Your API account |
-| `PATENT_LOG_LEVEL`, `PATENT_LOG_FORMAT` | Server logging detail and format | `INFO`; format `json` for the server and readable lines for the `patent-creator` command unless you set it |
+| `PATENT_LOG_LEVEL`, `PATENT_LOG_FORMAT` | Server logging detail and format | `INFO`; format `json` for the server and readable lines for the `qwen-patent-creator` command unless you set it |
 | `PATENT_MPEP_DEVICE` | Force `cpu` or `gpu` for the index build | Detected automatically |
 | `PATENT_EMBED_BATCH_SIZE` | Lower it (16 or 8) if the GPU runs out of memory while building the index | 256 on an NVIDIA GPU, 32 otherwise |
 | `PATENT_DATA_DIR` | Move the downloaded data and index | Default shown in [What Setup Does](#what-setup-does) |
 
-`patent-creator config list` shows every setting. If you work from a copy of the code, a `.env` file in that folder works too (see `.env.example`); saved settings fill in anything `.env` and your environment leave unset.
+`qwen-patent-creator config list` shows every setting. If you work from a copy of the code, a `.env` file in that folder works too (see `.env.example`); saved settings fill in anything `.env` and your environment leave unset.
 
 <details>
 <summary><strong>Setting up BigQuery (optional, for patent search)</strong></summary>
@@ -433,10 +449,10 @@ gcloud auth application-default login
 gcloud auth application-default set-quota-project your-project-id
 
 # 4. Save your project ID
-patent-creator config set GOOGLE_CLOUD_PROJECT your-project-id
+qwen-patent-creator config set GOOGLE_CLOUD_PROJECT your-project-id
 
 # 5. Test it
-patent-creator check-bigquery
+qwen-patent-creator check-bigquery
 ```
 
 </details>
@@ -444,7 +460,7 @@ patent-creator check-bigquery
 <details>
 <summary><strong>Windows-specific setup notes</strong></summary>
 
-**Git Bash is required** for the `claude mcp add` command on Windows. Install [Git for Windows](https://git-scm.com/download/win) and set the path:
+**Git Bash is required for Claude Code** on Windows, which runs `claude mcp add` through it. Install [Git for Windows](https://git-scm.com/download/win) and set the path:
 
 ```bash
 # PowerShell, if setup can't find Git Bash on its own
@@ -455,11 +471,13 @@ $env:CLAUDE_CODE_GIT_BASH_PATH="C:\Program Files\Git\bin\bash.exe"
 
 ```bash
 # Correct
-claude mcp add ... -- "C:/Users/YourName/venv/Scripts/python.exe"
+claude mcp add --transport stdio qwen-patent-creator --scope user -- "C:/Users/YourName/venv/Scripts/python.exe"
 
 # Wrong (will fail)
-claude mcp add ... -- "C:\Users\YourName\venv\Scripts\python.exe"
+claude mcp add --transport stdio qwen-patent-creator --scope user -- "C:\Users\YourName\venv\Scripts\python.exe"
 ```
+
+OpenCode and Qwen Code read a JSON file instead of running `claude mcp add`, so they need no Git Bash; `qwen-patent-creator setup --client opencode` or `--client qwen-code` writes the entry for you.
 
 </details>
 
@@ -470,7 +488,7 @@ claude mcp add ... -- "C:\Users\YourName\venv\Scripts\python.exe"
 - **Python:** 3.10 to 3.13. CI tests 3.11; the full install has been walked end to end on 3.13 (macOS, Apple Silicon). 3.14 is untested.
 - **RAM:** 8 GB (16 GB makes the index build more comfortable)
 - **Disk:** about 4 GB free: about 2 GB for the tool and its libraries, 0.5 GB for the language models it downloads, about 1 GB for the rulebook and index
-- **Claude Code** with a paid Claude plan
+- **An MCP client:** OpenCode, Qwen Code CLI or Claude Code, with a model plan for it. Only the client is required; the search and analysis engine runs locally.
 
 Optional:
 
@@ -503,10 +521,11 @@ See `pyproject.toml` for the complete list.
 ## Architecture
 
 ```
-claude-patent-creator/
-├── .claude-plugin/          # Plugin manifest and marketplace config
-├── mcp_server/              # Core MCP server
+Qwen-Patent-Creator/
+├── mcp_server/              # Core MCP server (client-neutral)
 │   ├── server.py            # MCPServer entry point
+│   ├── registration.py      # Per-client MCP registration (claude / opencode / qwen-code)
+│   ├── hyde.py              # Opt-in HyDE query expansion, off by default
 │   ├── mpep_search.py       # Hybrid RAG search engine
 │   ├── bigquery_search.py   # BigQuery patent search
 │   ├── claims_analyzer.py   # 35 USC 112(b) analyzer
@@ -515,17 +534,20 @@ claude-patent-creator/
 │   ├── diagram_generator.py       # Graphviz diagrams
 │   ├── tools/               # MCP tool definitions
 │   └── index/               # FAISS + BM25 index (git-ignored)
-├── skills/                  # Claude Code skills (17)
-├── agents/                  # Autonomous agents (13)
-├── commands/                # Slash commands (16)
-├── hooks/                   # Event-driven automation
-├── scripts/                 # Testing and utilities
-├── docs/                    # Additional documentation
+├── skills/                  # Canonical skills (17), client-neutral source
+├── agents/                  # Canonical agents (13)
+├── commands/                # Canonical slash commands (15)
+├── hooks/hooks.json         # Hook definitions, generated into .qwen/settings.json
+├── scripts/                 # build_plugin_targets.py, normalise_canonical.py, test helpers
+├── .opencode/               # Generated for OpenCode: agents, commands, skills
+├── .qwen/                   # Generated for Qwen Code: agents, commands, skills, settings.json
+├── tests/                   # Suite, incl. generated-tree parity and registration
+├── docs/                    # Additional documentation, incl. QWEN_ADAPTATION_PLAN.md
 ├── pdfs/                    # Downloaded MPEP PDFs (git-ignored)
-└── CLAUDE.md                # Full project documentation
+└── AGENTS.md                # Full project documentation
 ```
 
-For the complete architecture documentation, development workflows, and troubleshooting guides, see [CLAUDE.md](CLAUDE.md).
+For the complete architecture documentation, development workflows, and troubleshooting guides, see [AGENTS.md](AGENTS.md). The adaptation decisions for the fork are in [docs/QWEN_ADAPTATION_PLAN.md](docs/QWEN_ADAPTATION_PLAN.md).
 
 ---
 
@@ -552,11 +574,11 @@ Things to be aware of:
 - **NVIDIA users: PyTorch install order matters.** Setup handles it. On a hand-made install, install the CUDA build of PyTorch before `sentence-transformers`, or you get the CPU-only build.
 - **Patent search needs one setup step.** A free SerpApi key (Quick Start, Step 3), EPO OPS key and secret, or a Google Cloud project for BigQuery. USPTO ODP supplements these providers.
 - **Diagrams need Graphviz**, a free program outside Python. Setup offers to install it.
-- **The claims check skips the antecedent-basis check by default** (terms like "the controller" used before "a controller"). Its pattern matcher flags too many correct claims. Every claims report names this skipped check; turn it on with `patent-creator config set PATENT_ENABLE_ANTECEDENT_CHECK 1` and review its findings by hand.
+- **The claims check skips the antecedent-basis check by default** (terms like "the controller" used before "a controller"). Its pattern matcher flags too many correct claims. Every claims report names this skipped check; turn it on with `qwen-patent-creator config set PATENT_ENABLE_ANTECEDENT_CHECK 1` and review its findings by hand.
 - **Windows users need Git Bash** for Claude Code's `claude mcp add`. See [Windows setup notes](#configuration).
-- **Claude Code 2.1.280 handshake error `-32022`:** see the [optional stdio workaround](CLAUDE.md#claude-code-handshake-error--32022) for the reported client negotiation bug. Reported by [DanielTillett](https://github.com/RobThePCGuy/Claude-Patent-Creator/issues/102).
+- **Claude Code 2.1.280 handshake error `-32022`:** see the [optional stdio workaround](AGENTS.md#claude-code-handshake-error--32022) for the reported client negotiation bug. Reported by [DanielTillett](https://github.com/RobThePCGuy/Claude-Patent-Creator/issues/102).
 
-See [CLAUDE.md](CLAUDE.md) for the full troubleshooting guide.
+See [AGENTS.md](AGENTS.md) for the full troubleshooting guide.
 
 ---
 
@@ -578,12 +600,12 @@ If you're coming from the development side and patent terminology is new (or vic
 | **RAG** | Retrieval Augmented Generation. Instead of relying only on what the AI was trained on, it searches a database first and uses those results to give a better answer. |
 | **FAISS** | Facebook AI Similarity Search. A fast way to find similar text by comparing mathematical representations of meaning. |
 | **BM25** | A text search algorithm that matches exact words and phrases. Works alongside FAISS to catch things vector search might miss. |
-| **MCP** | Model Context Protocol. A standard for connecting AI tools to AI models. It's how this system talks to Claude. |
-| **MCP server** | The part of this tool that runs quietly in the background and answers Claude's requests. Claude Code starts it for you. |
-| **Plugin** | An add-on for Claude Code. This one adds the guided workflows and slash commands. |
+| **MCP** | Model Context Protocol. A standard for connecting AI tools to AI models. It's how this system talks to OpenCode, Qwen Code CLI or Claude Code. |
+| **MCP server** | The part of this tool that runs quietly in the background and answers the client's requests. The client starts it for you, from the entry `setup` writes into its config. |
+| **Plugin layer** | The guided-workflow files — skills, agents, slash commands, hooks. The canonical copies sit in `skills/`, `agents/` and `commands/`, and the generator writes the shape each client reads (`.opencode/`, `.qwen/`). |
 | **Terminal** | The window where you type commands: Terminal on a Mac, PowerShell on Windows. |
 | **Python** | The programming language this tool is written in. You install it once; you never write any. |
-| **Virtual environment (venv)** | A private folder holding this tool and its libraries, so it can't disturb other programs. The Quick Start makes one called `patent-creator-venv`. |
+| **Virtual environment (venv)** | A private folder holding this tool and its libraries, so it can't disturb other programs. The Quick Start makes one called `qwen-patent-creator-venv`. |
 | **pip** | Python's installer. It downloads the tool and its libraries into the virtual environment. |
 | **git** | A program for downloading code. pip uses it to fetch this tool from GitHub. |
 | **API key** | A password-like code a service gives you so the tool can use it on your behalf. Keep it private. |
@@ -595,7 +617,7 @@ If you're coming from the development side and patent terminology is new (or vic
 ## Roadmap
 
 - [x] Support for international patent offices (EPO, WIPO/PCT)
-- [ ] Web interface for non-Claude Code users
+- [ ] Web interface for users whose client cannot read the plugin layer
 - [ ] Claim dependency graph visualization
 - [ ] Automated obviousness analysis (35 USC 103)
 - [ ] Patent portfolio analysis tools
@@ -629,9 +651,9 @@ MPEP, 35 USC, and 37 CFR are published by the USPTO. Patent data comes from Goog
 
 ## Project Status
 
-This project is in **beta**. I'm actively working on it, but not everything is polished and some features may not work as described. If you run into issues, [open one on GitHub](https://github.com/RobThePCGuy/Claude-Patent-Creator/issues) and I'll take a look.
+This project is in **beta**. I'm actively working on it, but not everything is polished and some features may not work as described. If you run into issues, [open one on GitHub](https://github.com/DanielTillett/Qwen-Patent-Creator/issues) and I'll take a look.
 
-For detailed documentation: [CLAUDE.md](CLAUDE.md) | For security issues: [SECURITY.md](SECURITY.md)
+For detailed documentation: [AGENTS.md](AGENTS.md) | For security issues: [SECURITY.md](SECURITY.md)
 
 ---
 

@@ -17,7 +17,7 @@ import urllib.request
 from typing import Any
 
 CDX_URL = "https://web.archive.org/cdx/search/cdx"
-USER_AGENT = "Claude-Patent-Creator (+https://github.com/RobThePCGuy/Claude-Patent-Creator)"
+USER_AGENT = "Qwen-Patent-Creator (+https://github.com/DanielTillett/Qwen-Patent-Creator)"
 MATCH_TYPES = ("exact", "prefix", "host", "domain")
 
 
