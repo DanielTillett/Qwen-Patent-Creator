@@ -72,7 +72,7 @@ def register_diagram_tools(
         Render a technical diagram from Graphviz DOT code.
 
         Use this tool to convert DOT language code into patent-style technical drawings.
-        Claude should generate the DOT code based on user's description, then call this tool to render it.
+        The client generates the DOT code from the user's description, then calls this tool to render it.
 
         Args:
             dot_code: Complete Graphviz DOT language code for the diagram

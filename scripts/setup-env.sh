@@ -3,7 +3,7 @@
 
 if [ -n "$CLAUDE_ENV_FILE" ]; then
   # Add patent creator to PATH if installed
-  if command -v patent-creator &> /dev/null; then
+  if command -v qwen-patent-creator &> /dev/null; then
     echo "# Patent Creator CLI available" >> "$CLAUDE_ENV_FILE"
   fi
 

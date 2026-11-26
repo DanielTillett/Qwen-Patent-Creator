@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Graphviz Installation Helper for claude-patent-creator
+Graphviz Installation Helper for qwen-patent-creator
 Run this script to check and install Graphviz on your system
 """
 
@@ -23,7 +23,7 @@ except ImportError:
 def main():
     print("=" * 60)
     print("Graphviz Installation Helper")
-    print("claude-patent-creator MCP Server")
+    print("qwen-patent-creator MCP Server")
     print("=" * 60)
     print()
 

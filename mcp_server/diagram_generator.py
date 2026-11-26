@@ -638,7 +638,7 @@ def check_graphviz_installed() -> dict[str, Any]:
             cmd = "sudo apt-get install graphviz"
         status["message"] = (
             f"The free Graphviz program is missing. Install it by running: {cmd} "
-            "(or see https://graphviz.org/download/), then restart Claude Code."
+            "(or see https://graphviz.org/download/), then restart your MCP client."
         )
 
     return status

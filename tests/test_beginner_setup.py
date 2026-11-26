@@ -137,7 +137,7 @@ def _run_isolated(tmp_path, code, extra_env=None):
     import subprocess
 
     home = tmp_path / "home"
-    (home / ".config" / "claude-patent-creator").mkdir(parents=True, exist_ok=True)
+    (home / ".config" / "qwen-patent-creator").mkdir(parents=True, exist_ok=True)
     env = {"HOME": str(home), "PATH": os.environ.get("PATH", ""), "APPDATA": str(home)}
     if os.name == "nt":
         env["SYSTEMROOT"] = os.environ.get("SYSTEMROOT", "")
@@ -152,9 +152,9 @@ def _save(tmp_path, values):
     import json
 
     if os.name == "nt":
-        folder = tmp_path / "home" / "claude-patent-creator"
+        folder = tmp_path / "home" / "qwen-patent-creator"
     else:
-        folder = tmp_path / "home" / ".config" / "claude-patent-creator"
+        folder = tmp_path / "home" / ".config" / "qwen-patent-creator"
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "config.json").write_text(json.dumps(values), encoding="utf-8")
 

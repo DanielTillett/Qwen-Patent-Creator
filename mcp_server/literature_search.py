@@ -49,7 +49,7 @@ from typing import Any, Optional
 
 from defusedxml import ElementTree as DefusedET
 
-USER_AGENT = "Claude-Patent-Creator (+https://github.com/RobThePCGuy/Claude-Patent-Creator)"
+USER_AGENT = "Qwen-Patent-Creator (+https://github.com/DanielTillett/Qwen-Patent-Creator)"
 OPENALEX_URL = "https://api.openalex.org/works"
 ARXIV_URL = "https://export.arxiv.org/api/query"
 S2_URL = "https://api.semanticscholar.org/graph/v1/paper/search"

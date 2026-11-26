@@ -13,7 +13,7 @@ automated search pages, so the tool goes through SerpApi rather than calling
 patents.google.com directly.
 
 Setup: create a free account at https://serpapi.com, then set SERPAPI_API_KEY
-(in the project .env or the patent-creator config).
+(in the project .env or the qwen-patent-creator config).
 
 Behavior verified live (2026-10-06):
 - Space-separated words must all match (AND); "double quotes" match a phrase.
@@ -131,7 +131,7 @@ class GooglePatentsSearch:
             "Google Patents search needs a free SerpApi key (250 searches a month). "
             f"Sign up at {SIGNUP_URL}, copy the key from {KEY_URL}, then save it by "
             f'running this in a terminal: {_config_command()} config set SERPAPI_API_KEY "YOUR_KEY" '
-            "and restart Claude Code. (This is Step 3 of the README's Quick Start.)"
+            "and restart your MCP client. (This is Step 3 of the README's Quick Start.)"
         )
 
     def search(

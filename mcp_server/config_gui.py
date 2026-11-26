@@ -1,4 +1,4 @@
-"""Optional desktop GUI for editing settings (``patent-creator config --gui``).
+"""Optional desktop GUI for editing settings (``qwen-patent-creator config --gui``).
 
 A thin Tkinter form generated from the :data:`mcp_server.config.OPTIONS` schema,
 so the list of options never drifts from the single source of truth. All
@@ -71,14 +71,14 @@ def launch() -> int:
         print(
             render(
                 "    Use the command line instead, e.g.:\n"
-                "      patent-creator config set GOOGLE_CLOUD_PROJECT my-project-id"
+                "      qwen-patent-creator config set GOOGLE_CLOUD_PROJECT my-project-id"
             ),
             file=sys.stderr,
         )
         return 1
 
     root = tk.Tk()
-    root.title("Claude Patent Creator - Settings")
+    root.title("Qwen Patent Creator - Settings")
     root.minsize(560, 480)
 
     # Scrollable body so the form never overflows small screens.

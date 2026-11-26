@@ -16,7 +16,7 @@ module name, so a different copy elsewhere on sys.path cannot answer.
 import re
 from pathlib import Path
 
-PACKAGE_NAME = "claude-patent-creator"
+PACKAGE_NAME = "qwen-patent-creator"
 
 
 def _project_version(text: str):

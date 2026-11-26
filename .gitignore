@@ -66,3 +66,6 @@ ruff_out*.txt
 
 # Codebase reckoning workspace
 .codebase-reckoning/
+
+# Vera code-search index (stays local to the checkout)
+.vera/

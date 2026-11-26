@@ -7,7 +7,7 @@ downloads plus a 5-15 minute index build.
 Resolution order for each directory:
 
 1. ``PATENT_DATA_DIR`` environment variable (also settable via
-   ``patent-creator config set PATENT_DATA_DIR ...`` — the config layer
+   ``qwen-patent-creator config set PATENT_DATA_DIR ...`` — the config layer
    bridges file values into the environment at server startup).
 2. The legacy in-tree location, only when it already contains data — so
    installs that predate this module keep using what they downloaded, with
@@ -26,7 +26,7 @@ LEGACY_PDFS_DIR = _PACKAGE_DIR.parent / "pdfs"
 LEGACY_INDEX_DIR = _PACKAGE_DIR / "index"
 LEGACY_DIAGRAMS_DIR = _PACKAGE_DIR.parent / "diagrams"
 
-_APP_DIR_NAME = "claude-patent-creator"
+_APP_DIR_NAME = "qwen-patent-creator"
 
 
 def _default_base() -> Path:

@@ -72,7 +72,7 @@ def register_literature_tools(
             - No results means no match in the sources that answered, never
               proof that no prior art exists. Say which sources were searched.
 
-        Optional free keys (set in .env or the patent-creator config):
+        Optional free keys (set in .env or the qwen-patent-creator config):
             OPENALEX_API_KEY raises OpenAlex's daily allowance (~100 searches
             keyless). SEMANTIC_SCHOLAR_API_KEY makes Semantic Scholar reliable;
             its keyless pool is shared and often busy.

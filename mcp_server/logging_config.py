@@ -136,7 +136,7 @@ def setup_logging(
         Configured structured logger
     """
     # Get or create logger
-    logger = logging.getLogger("claude-patent-creator")
+    logger = logging.getLogger("qwen-patent-creator")
     logger.setLevel(getattr(logging, level.upper()))
 
     # Clear existing handlers
@@ -176,7 +176,7 @@ def prefer_format(format_type: str) -> None:
 
     This module builds its logger at import, so an existing logger is
     re-formatted in place: setup_logging() swaps the handlers on the shared
-    "claude-patent-creator" logger every adapter already points at."""
+    "qwen-patent-creator" logger every adapter already points at."""
     global _default_format, _logger
     _default_format = format_type
     if _logger is not None and not os.environ.get("PATENT_LOG_FORMAT"):

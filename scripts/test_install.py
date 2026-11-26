@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Verify installation - Run this after patent-creator setup completes"""
+"""Verify installation - Run this after qwen-patent-creator setup completes"""
 import sys
 from importlib.metadata import version as distribution_version
 
 from packaging.specifiers import SpecifierSet
 
 print("=" * 60)
-print("Claude Patent Creator - Installation Verification")
+print("Qwen Patent Creator - Installation Verification")
 print("=" * 60)
 
 # Test imports
@@ -115,7 +115,7 @@ else:
     print("\n[CPU] Running on CPU - still works, just slower than GPU mode")
 
 print("\nNext steps:")
-_cli = "patent-creator"
+_cli = "qwen-patent-creator"
 try:
     from mcp_server.cli_command import installed_cli
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-System Health Checker for Claude Patent Creator
+System Health Checker for Qwen Patent Creator
 Provides comprehensive pre-flight dependency validation
 """
 
@@ -23,7 +23,7 @@ from typing import Any
 
 
 def _render(message: str) -> str:
-    """Name the installed patent-creator command (see cli_command)."""
+    """Name the installed qwen-patent-creator command (see cli_command)."""
     try:
         from cli_command import render
     except ImportError:
@@ -134,7 +134,7 @@ class SystemHealthChecker:
             return {
                 "status": "missing",
                 "ready": False,
-                "fix": _render("patent-creator setup"),
+                "fix": _render("qwen-patent-creator setup"),
                 "details": "MPEP index not built. Run setup to download and index USPTO rules.",
                 "required_for": [
                     "search_mpep",
@@ -181,7 +181,7 @@ class SystemHealthChecker:
                 "status": "corrupt",
                 "ready": False,
                 "error": str(e),
-                "fix": _render("patent-creator setup --rebuild"),
+                "fix": _render("qwen-patent-creator setup --rebuild"),
                 "details": "Index files exist but are corrupted. Rebuild required.",
             }
 
@@ -307,7 +307,7 @@ class SystemHealthChecker:
                 "ready": False,
                 "available": False,
                 "api_key_configured": False,
-                "fix": _render('patent-creator config set USPTO_API_KEY "YOUR_KEY"') + ", then restart Claude Code",
+                "fix": _render('qwen-patent-creator config set USPTO_API_KEY "YOUR_KEY"') + ", then restart your MCP client",
                 "details": (
                     "Get API key at: https://data.uspto.gov/myodp\n"
                     "Setup takes 5 minutes. Requires USPTO account and ID.me verification."
@@ -377,7 +377,7 @@ class SystemHealthChecker:
                 "ready": False,
                 "available": False,
                 "error": "USPTO API module not available",
-                "fix": _pip() + " install --upgrade git+https://github.com/RobThePCGuy/Claude-Patent-Creator.git",
+                "fix": _pip() + " install --upgrade git+https://github.com/DanielTillett/Qwen-Patent-Creator.git",
             }
         except Exception as e:
             if logger:
@@ -426,7 +426,7 @@ class SystemHealthChecker:
                     "ready": False,
                     "python_package": True,
                     "system_command": False,
-                    "fix": "Install the free Graphviz program: brew install graphviz (Mac), winget install graphviz (Windows) or sudo apt install graphviz (Linux), then restart Claude Code",
+                    "fix": "Install the free Graphviz program: brew install graphviz (Mac), winget install graphviz (Windows) or sudo apt install graphviz (Linux), then restart your MCP client",
                     "details": "Python package installed but system Graphviz missing",
                     "required_for": ["render_diagram", "create_flowchart", "create_block_diagram"],
                 }
@@ -658,7 +658,7 @@ class SystemHealthChecker:
             "packages": packages,
             "versions": versions,
             "fix": _render(
-                _render_cmd("pip install --upgrade git+https://github.com/RobThePCGuy/Claude-Patent-Creator.git")
+                _render_cmd("pip install --upgrade git+https://github.com/DanielTillett/Qwen-Patent-Creator.git")
             )
             if not all_installed
             else None,
@@ -689,7 +689,7 @@ class SystemHealthChecker:
             self.check_all_dependencies(verbose=True)
 
         print("\n" + "=" * 65, file=sys.stderr)
-        print("SYSTEM STATUS - Claude Patent Creator", file=sys.stderr)
+        print("SYSTEM STATUS - Qwen Patent Creator", file=sys.stderr)
         print("=" * 65, file=sys.stderr)
 
         # MPEP Index

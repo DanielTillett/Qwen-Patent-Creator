@@ -19,7 +19,7 @@ INSTALL_URL = "https://cloud.google.com/sdk/docs/install"
 
 
 def _cli() -> str:
-    """The installed patent-creator command, quoted for this shell."""
+    """The installed qwen-patent-creator command, quoted for this shell."""
     try:
         from mcp_server.cli_command import installed_cli
     except ImportError:
@@ -27,7 +27,7 @@ def _cli() -> str:
         try:
             from mcp_server.cli_command import installed_cli
         except ImportError:
-            return "patent-creator"
+            return "qwen-patent-creator"
     return installed_cli()
 
 

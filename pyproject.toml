@@ -1,6 +1,6 @@
 [project]
-name = "claude-patent-creator"
-version = "0.3.3"
+name = "qwen-patent-creator"
+version = "0.4.0"
 description = "MPEP-based Patent Creator for patent creation with examiner-level accuracy"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -20,7 +20,7 @@ classifiers = [
 
 dependencies = [
     # NOTE: A bare `pip install` lands a CPU torch wheel here so the package
-    # is functional out of the box. `patent-creator setup` detects GPUs and
+    # is functional out of the box. `qwen-patent-creator setup` detects GPUs and
     # swaps in a CUDA/MPS torch wheel for a 5-10x speedup on index building.
     "torch>=2.0",                          # CPU baseline; setup may swap to GPU build
     "mcp>=2.0.0,<3.0.0",                   # MCP Python SDK (MCPServer; 2.0 removed FastMCP, see #78)
@@ -47,7 +47,7 @@ dependencies = [
 dev = ["pytest>=7.0.0", "black>=23.0.0", "ruff>=0.15.10"]
 gpu = [
     # For GPU acceleration (5-10x faster)
-    # Install handled by 'patent-creator setup' with automatic hardware detection
+    # Install handled by 'qwen-patent-creator setup' with automatic hardware detection
     # Manual: pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
     # Latest PyTorch: 2.9.1 (Nov 2025) with CUDA 12.8 support
     # Note: faiss-gpu-cu12 available for Linux only
@@ -59,13 +59,13 @@ llm = [
 ]
 
 [project.scripts]
-patent-creator = "mcp_server.cli:main"
+qwen-patent-creator = "mcp_server.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/RobThePCGuy/Claude-Patent-Creator"
-Documentation = "https://github.com/RobThePCGuy/Claude-Patent-Creator#readme"
-Repository = "https://github.com/RobThePCGuy/Claude-Patent-Creator"
-Issues = "https://github.com/RobThePCGuy/Claude-Patent-Creator/issues"
+Homepage = "https://github.com/DanielTillett/Qwen-Patent-Creator"
+Documentation = "https://github.com/DanielTillett/Qwen-Patent-Creator#readme"
+Repository = "https://github.com/DanielTillett/Qwen-Patent-Creator"
+Issues = "https://github.com/DanielTillett/Qwen-Patent-Creator/issues"
 
 [build-system]
 requires = ["setuptools>=82.0.1", "wheel"]
@@ -86,6 +86,11 @@ target-version = ['py39', 'py310', 'py311', 'py312']
 [tool.ruff]
 line-length = 100
 target-version = "py39"
+# .opencode/ and .qwen/ are generated from the canonical skills/, agents/ and
+# commands/ by scripts/build_plugin_targets.py. Their .py copies are byte-identical
+# to the canonical files, so linting the source covers them; excluding the trees
+# keeps a mirrored copy from needing the per-file-ignores below twice.
+extend-exclude = [".opencode", ".qwen"]
 
 [tool.ruff.lint]
 select = [

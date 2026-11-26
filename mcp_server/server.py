@@ -37,7 +37,7 @@ try:
 except ImportError:
     pass  # dotenv not required
 
-# Saved settings (patent-creator config set ...) must be in the environment
+# Saved settings (qwen-patent-creator config set ...) must be in the environment
 # before anything below reads it: the logger picks its format at import, and
 # data paths (PATENT_DATA_DIR) are computed at import. Applying them later in
 # main() left both on their defaults. Real env vars and .env still win.
@@ -131,7 +131,7 @@ def _own_version() -> str:
 _version = _own_version()
 
 # Initialize MCP server. The version reaches clients in the MCP handshake (serverInfo.version).
-mcp = MCPServer("claude-patent-creator", version=_version)
+mcp = MCPServer("qwen-patent-creator", version=_version)
 
 # Initialize logger
 logger = get_logger()
@@ -676,7 +676,7 @@ def _check_prerequisites(rebuild_index):
         from cli_command import render
 
         print("\nTo get started, run:", file=sys.stderr)
-        print(render("  patent-creator setup"), file=sys.stderr)
+        print(render("  qwen-patent-creator setup"), file=sys.stderr)
         sys.exit(1)
 
     if pdf_count == 0 and rebuild_index:
@@ -684,7 +684,7 @@ def _check_prerequisites(rebuild_index):
         print("\nOptions:", file=sys.stderr)
         from cli_command import render
 
-        print(render("1. Run patent-creator download-mpep to download automatically"), file=sys.stderr)
+        print(render("1. Run qwen-patent-creator download-mpep to download automatically"), file=sys.stderr)
         print(f"2. Manually download MPEP PDFs into {MPEP_DIR}", file=sys.stderr)
         sys.exit(1)
 
@@ -719,7 +719,7 @@ def _run_health_checks():
         print("\nServer will start with limited functionality.", file=sys.stderr)
         from cli_command import render
 
-        print(render("Run 'patent-creator health' for details.\n"), file=sys.stderr)
+        print(render("Run 'qwen-patent-creator health' for details.\n"), file=sys.stderr)
     else:
         print("[OK] All systems operational\n", file=sys.stderr)
 

@@ -52,7 +52,7 @@ def test_fresh_install_defaults_outside_site_packages(monkeypatch, tmp_path):
     for resolved in (data_paths.mpep_dir(), data_paths.index_dir()):
         assert data_paths._PACKAGE_DIR not in resolved.parents
         assert resolved != data_paths._PACKAGE_DIR
-        assert "claude-patent-creator" in str(resolved)
+        assert "qwen-patent-creator" in str(resolved)
 
 
 def test_empty_legacy_dir_does_not_count_as_data(tmp_path):

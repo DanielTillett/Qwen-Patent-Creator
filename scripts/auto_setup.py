@@ -154,7 +154,7 @@ def verify_installation():
 def main():
     """Main auto-setup routine"""
     print("=" * 60)
-    print("Claude Patent Creator - Automatic Setup")
+    print("Qwen Patent Creator - Automatic Setup")
     print("=" * 60)
     print("\nDetecting your system configuration...")
 
@@ -198,8 +198,8 @@ def main():
         else:
             print("\nYour system is configured to use CPU")
         print("\nNext steps:")
-        print("  1. Run: patent-creator setup")
-        print("  2. Optional: run patent-creator check-bigquery")
+        print("  1. Run: qwen-patent-creator setup")
+        print("  2. Optional: run qwen-patent-creator check-bigquery")
         return 0
     else:
         print("\n[FAIL] Verification failed!")

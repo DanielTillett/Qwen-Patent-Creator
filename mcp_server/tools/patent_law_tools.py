@@ -168,14 +168,14 @@ def register_patent_law_tools(
                     + ", ".join(missing + failed)
                     + ". Missing from index: " + (", ".join(missing) or "none")
                     + "; search failed: " + (", ".join(failed) or "none")
-                    + ". Run patent-creator setup --rebuild for missing sources."
+                    + ". Run qwen-patent-creator setup --rebuild for missing sources."
                 )
                 coverage["warning"] = _render_command(coverage["warning"])
             if not all_results:
                 return [{"error": _render_command(
                              f"No {jurisdiction or 'patent-law'} passages returned. "
                              "Sources may be missing from the installed index or searches failed. "
-                             "Check coverage; run patent-creator setup --rebuild for missing sources."),
+                             "Check coverage; run qwen-patent-creator setup --rebuild for missing sources."),
                          "coverage": coverage}]
             for result in all_results:
                 result["coverage"] = coverage
