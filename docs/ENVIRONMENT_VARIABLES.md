@@ -1,6 +1,6 @@
 # Setting Environment Variables
 
-> **Commands on this page** assume `patent-creator` is on your PATH. With the README's install, type `~/patent-creator-venv/bin/patent-creator` instead (Windows PowerShell: `& "$HOME\patent-creator-venv\Scripts\patent-creator.exe"`). Keys and settings are easiest to save with `patent-creator config set KEY VALUE`; an environment variable overrides a saved value.
+> **Commands on this page** assume `qwen-patent-creator` is on your PATH. With the README's install, type `~/qwen-patent-creator-venv/bin/qwen-patent-creator` instead (Windows PowerShell: `& "$HOME\qwen-patent-creator-venv\Scripts\qwen-patent-creator.exe"`). Keys and settings are easiest to save with `qwen-patent-creator config set KEY VALUE`; an environment variable overrides a saved value.
 
 This guide shows how to set environment variables for API keys on different platforms.
 
@@ -8,10 +8,10 @@ This guide shows how to set environment variables for API keys on different plat
 > variables you can store settings in a config file the server reads:
 >
 > ```bash
-> ~/patent-creator-venv/bin/patent-creator config list                 # every setting, its value, and source
-> ~/patent-creator-venv/bin/patent-creator config set GOOGLE_CLOUD_PROJECT my-project-id
-> ~/patent-creator-venv/bin/patent-creator config set PATENT_BIGQUERY_MAX_BYTES_BILLED 268435456000   # ~250 GiB
-> ~/patent-creator-venv/bin/patent-creator config path                 # where the file lives
+> ~/qwen-patent-creator-venv/bin/qwen-patent-creator config list                 # every setting, its value, and source
+> ~/qwen-patent-creator-venv/bin/qwen-patent-creator config set GOOGLE_CLOUD_PROJECT my-project-id
+> ~/qwen-patent-creator-venv/bin/qwen-patent-creator config set PATENT_BIGQUERY_MAX_BYTES_BILLED 268435456000   # ~250 GiB
+> ~/qwen-patent-creator-venv/bin/qwen-patent-creator config path                 # where the file lives
 > ```
 >
 > Resolution order is **environment variable > config file > default**, so an
@@ -88,11 +88,22 @@ $env:VARIABLE_NAME
 - `SERPAPI_API_KEY` - SerpApi key for `search_patents_google`, worldwide full-text Google Patents search with claims (optional, recommended; free plan 250 searches/month)
 - `OPENALEX_API_KEY` - Optional free key for `search_non_patent_literature`; paper search works without it (about 100 searches a day), the key raises that. Free at https://openalex.org/settings/api-key
 - `SEMANTIC_SCHOLAR_API_KEY` - Optional free key for `search_non_patent_literature`; without it Semantic Scholar's shared pool is often busy and is skipped (OpenAlex and arXiv still run). Free at https://www.semanticscholar.org/product/api#api-key-form
-- `HYDE_BACKEND` - Set to `api` to use Anthropic/OpenAI for HyDE query expansion.
+- `HYDE_BACKEND` - Set to `api` to use Qwen, OpenAI or Anthropic for HyDE query expansion.
   Install the optional SDKs into the same environment first (the `llm` extra, or
   run that environment's Python with `-m pip install anthropic openai`). Set a
   matching API key and enable `PATENT_MPEP_USE_HYDE=true`. An unavailable explicit
   API backend reports an error; it does not silently select a local backend.
+  - `HYDE_API_PROVIDER` — which provider to use. Optional: without it the first
+    provider with its own key wins, in the order Qwen, OpenAI, Anthropic. Keys are
+    read per provider, so an `OPENAI_API_KEY` is never sent to a Qwen endpoint.
+  - `QWEN_API_KEY` — Qwen key; `HYDE_QWEN_MODEL` defaults to `qwen3-coder-flash`
+    (one short generation per search), `HYDE_OPENAI_MODEL` to `gpt-4o-mini`,
+    `HYDE_ANTHROPIC_MODEL` to `claude-haiku-4-5`.
+  - `HYDE_OPENAI_BASE_URL` — OpenAI-compatible endpoint. Qwen defaults to DashScope's
+    compatible-mode endpoint; point it at a local vLLM/Ollama serve for keyless local
+    HyDE (a placeholder key such as `local` is accepted by those servers).
+  - `HYDE_STRICT=true` — report a failed API call as an error instead of falling back
+    to rule-based expansion silently.
 - `PATENT_BIGQUERY_MAX_BYTES_BILLED` - Override the per-query BigQuery cost ceiling, in bytes
   (default: 350 GiB, which covers a normal keyword prior-art search — those scan ~325 GiB of
   the public corpus, roughly $2/query at on-demand pricing). When a query's estimated scan
@@ -103,8 +114,8 @@ $env:VARIABLE_NAME
   `end_year` filters or more specific keywords.
 - `PATENT_DATA_DIR` - Where downloaded corpora (MPEP/USC/CFR PDFs, ~500 MB) and the search
   index (~150 MB) are stored. Default: the platform app-data directory
-  (`%APPDATA%\claude-patent-creator\data` on Windows, `~/.local/share/claude-patent-creator/data`
+  (`%APPDATA%\qwen-patent-creator\data` on Windows, `~/.local/share/qwen-patent-creator/data`
   elsewhere), so the data survives reinstalls and upgrades. Installs that already hold data at
   the legacy in-package location keep using it — no migration needed. Changing this setting
-  does not move existing data; re-run `patent-creator setup` to download and rebuild at the
+  does not move existing data; re-run `qwen-patent-creator setup` to download and rebuild at the
   new location.

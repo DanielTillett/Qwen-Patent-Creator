@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-APP_DIR_NAME = "claude-patent-creator"
+APP_DIR_NAME = "qwen-patent-creator"
 GIB = 1024**3
 
 
@@ -106,6 +106,43 @@ OPTIONS: tuple[Option, ...] = (
         "Alternative backend for API HyDE query expansion (HYDE_BACKEND=api).",
         "secret",
     ),
+    Option(
+        "QWEN_API_KEY", "Credentials", "Qwen API key",
+        "Qwen backend for API HyDE query expansion (HYDE_BACKEND=api). Wins over "
+        "the OpenAI key when both are set. Qwen uses the OpenAI protocol, so no "
+        "extra SDK is needed.",
+        "secret",
+    ),
+    Option(
+        "HYDE_QWEN_MODEL", "Search", "HyDE Qwen model",
+        "Model name for Qwen HyDE expansion. Defaults to the cheap flash tier "
+        "(qwen3-coder-flash); e.g. qwen3-coder-plus for stronger expansion. "
+        "Ignored unless the Qwen backend is active.",
+        "str", default="qwen3-coder-flash",
+    ),
+    Option(
+        "HYDE_API_PROVIDER", "Search", "HyDE provider",
+        "Which provider API HyDE uses: qwen, openai or anthropic. Empty, or auto, "
+        "means the first provider with its own key, in the order Qwen, OpenAI, "
+        "Anthropic. Keys are read per provider, so a key for one is never sent to "
+        "another.",
+        "choice", default="", choices=("", "auto", "qwen", "openai", "anthropic"),
+    ),
+    Option(
+        "HYDE_STRICT", "Search", "HyDE strict mode",
+        "Report a failed HyDE API call as an error instead of silently falling back "
+        "to the rule-based expansion. Use it when an API HyDE must not degrade "
+        "without you noticing.",
+        "bool", default="false",
+    ),
+    Option(
+        "HYDE_OPENAI_BASE_URL", "Search", "HyDE API base URL",
+        "OpenAI-compatible endpoint for API HyDE. Defaults to Qwen's DashScope "
+        "compatible-mode endpoint for the Qwen backend; point it at a local "
+        "vLLM/Ollama serve for a fully local HyDE with a Qwen model. Overrides "
+        "OPENAI_BASE_URL.",
+        "str", default="",
+    ),
     # --- Search & performance ------------------------------------------------
     Option(
         "PATENT_BIGQUERY_MAX_BYTES_BILLED", "Search", "BigQuery cost cap (bytes)",
@@ -118,7 +155,7 @@ OPTIONS: tuple[Option, ...] = (
     ),
     Option(
         "HYDE_BACKEND", "Search", "HyDE backend",
-        "Query-expansion backend. 'api' uses Anthropic/OpenAI (consumes API "
+        "Query-expansion backend. 'api' uses Qwen/OpenAI/Anthropic (consumes API "
         "quota); empty uses the local model.",
         "choice", default="", choices=("", "api"),
     ),
@@ -166,7 +203,7 @@ OPTIONS: tuple[Option, ...] = (
     Option(
         "PATENT_LOG_FORMAT", "Performance", "Log format",
         "Format of log lines: 'json' (the server's default) or 'human'. "
-        "Unset, the patent-creator command prints human-readable lines.",
+        "Unset, the qwen-patent-creator command prints human-readable lines.",
         "choice", default="json",
         choices=("json", "human"),
     ),
@@ -177,7 +214,7 @@ OPTIONS: tuple[Option, ...] = (
         "location when it already holds data.",
         "str",
         note="Changing this does not move existing data; re-run "
-        "'patent-creator setup' to download and rebuild at the new location.",
+        "'qwen-patent-creator setup' to download and rebuild at the new location.",
     ),
 )
 

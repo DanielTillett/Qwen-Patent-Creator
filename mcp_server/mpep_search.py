@@ -305,7 +305,7 @@ def get_index_warnings(metadata: list[dict[str, Any]]) -> list[str]:
         return [
             "EPC_RULES is indexed but EPC articles are absent. This index may "
             "have the EPC classification defect; article/rule labels are unreliable. "
-            "Rebuild required: patent-creator setup --rebuild."
+            "Rebuild required: qwen-patent-creator setup --rebuild."
         ]
     return []
 
@@ -1260,7 +1260,7 @@ class MPEPIndex:
                 from mcp_server.cli_command import render as _render_cmd
             raise ValueError(
                 _render_cmd(
-                    "No chunks extracted from any sources. Run patent-creator setup to download sources."
+                    "No chunks extracted from any sources. Run qwen-patent-creator setup to download sources."
                 )
             )
 
@@ -1313,6 +1313,29 @@ class MPEPIndex:
 
         # Offer to clean up PDF files after successful indexing
         self._offer_pdf_cleanup()
+
+    def _expand_queries(self, query: str, num_expansions: int = 3) -> list[str]:
+        """HyDE-expanded queries, or the original query when HyDE is off.
+
+        A strict expander raises on purpose so a failed API call is visible.
+        Swallowing that here would return results from the unexpanded query as
+        though the expansion had worked, which is what HYDE_STRICT exists to
+        prevent, so a strict failure propagates.
+        """
+        if not (self.use_hyde and self.hyde_expander):
+            return [query]
+        try:
+            expanded = self.hyde_expander.expand_query(query, num_expansions=num_expansions)
+        except Exception as e:
+            if getattr(self.hyde_expander, "strict", False):
+                raise
+            _log_warning(f"HyDE expansion failed: {e}, using original query", error=str(e))
+            return [query]
+        _log_debug(
+            f"HyDE: Expanded to {len(expanded)} queries",
+            expansion_count=len(expanded),
+        )
+        return expanded
 
     def search(
         self,
@@ -1374,17 +1397,7 @@ class MPEPIndex:
                 sel_params = None
 
         # HyDE Query Expansion (if enabled)
-        queries_to_search = [query]
-        if self.use_hyde and self.hyde_expander:
-            try:
-                expanded_queries = self.hyde_expander.expand_query(query, num_expansions=3)
-                queries_to_search = expanded_queries
-                _log_debug(
-                    f"HyDE: Expanded to {len(queries_to_search)} queries",
-                    expansion_count=len(queries_to_search),
-                )
-            except Exception as e:
-                _log_warning(f"HyDE expansion failed: {e}, using original query", error=str(e))
+        queries_to_search = self._expand_queries(query)
 
         if allowed_ids is not None and len(allowed_ids) == 0:
             queries_to_search = []

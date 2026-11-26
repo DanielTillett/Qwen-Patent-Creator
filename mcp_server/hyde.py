@@ -14,6 +14,22 @@ import os
 import re
 import sys
 
+DEFAULT_QWEN_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
+# Model used for HyDE query expansion when the Qwen backend is active. Query
+# expansion is one short generation per search, so the cheap flash tier is the
+# default; HYDE_QWEN_MODEL can name a stronger model such as qwen3-coder-plus.
+DEFAULT_QWEN_MODEL = "qwen3-coder-flash"
+
+# Providers that speak the OpenAI protocol versus Anthropic's own SDK. Keys are
+# read per provider only — an OpenAI key is never sent to a Qwen endpoint.
+API_PROVIDERS = ("qwen", "openai", "anthropic")
+PROVIDER_KEY_ENV = {
+    "qwen": "QWEN_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+}
+
 
 class HyDEQueryExpander:
     """Expands queries using Hypothetical Document Embeddings"""
@@ -28,6 +44,8 @@ class HyDEQueryExpander:
         self.backend = backend
         self.api_client = None
         self.local_model = None
+        self.api_provider = ""
+        self.strict = os.getenv("HYDE_STRICT", "").strip().lower() in ("1", "true", "yes", "on")
 
         if backend == "auto":
             self._detect_best_backend()
@@ -66,38 +84,86 @@ class HyDEQueryExpander:
         )
         self.backend = "rule-based"
 
+    def _resolve_provider(self) -> str:
+        """Pick the API provider for HyDE expansion.
+
+        An explicit HYDE_API_PROVIDER wins. Otherwise the first provider that
+        has its own key is used, in the order Qwen, OpenAI, Anthropic. Keys are
+        never shared between providers: an OpenAI key is not forwarded to a Qwen
+        endpoint, so `auto` with only OPENAI_API_KEY means the OpenAI API.
+        """
+        explicit = os.getenv("HYDE_API_PROVIDER", "").strip().lower()
+        if explicit in API_PROVIDERS:
+            return explicit
+        if explicit and explicit != "auto":
+            raise ValueError(f"Unknown HYDE_API_PROVIDER: {explicit}")
+
+        for provider in API_PROVIDERS:
+            if os.getenv(PROVIDER_KEY_ENV[provider]):
+                return provider
+        return ""
+
     def _init_api_backend(self):
-        """Initialize API backend (OpenAI or Anthropic)"""
-        try:
-            import anthropic  # type: ignore[import-not-found]
+        """Initialize API backend (Qwen, OpenAI or Anthropic)"""
+        provider = self._resolve_provider()
+        if not provider:
+            try:
+                from cli_command import render
+            except ImportError:
+                from mcp_server.cli_command import render
+            raise ValueError(render(
+                "HyDE API backend is unavailable. Set an API key and install its SDK: "
+                "pip install anthropic openai"
+            ))
 
-            if os.getenv("ANTHROPIC_API_KEY"):
-                self.api_client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-                self.backend = "anthropic"
-                print("HyDE: Using Anthropic API backend", file=sys.stderr)
-                return
-        except ImportError:
-            pass
+        key = os.getenv(PROVIDER_KEY_ENV[provider])
+        if not key:
+            try:
+                from cli_command import render
+            except ImportError:
+                from mcp_server.cli_command import render
+            raise ValueError(render(
+                f"HyDE_API_PROVIDER={provider} but {PROVIDER_KEY_ENV[provider]} is not set. "
+                "Local OpenAI-compatible servers (vLLM/Ollama) accept any placeholder key, "
+                "e.g. set it to 'local' and point HYDE_OPENAI_BASE_URL at the server."
+            ))
 
-        try:
-            import openai  # type: ignore[import-not-found]
+        if provider == "anthropic":
+            try:
+                import anthropic  # type: ignore[import-not-found]
+            except ImportError:
+                raise ValueError("The Anthropic SDK is not installed: pip install anthropic")
+            self.api_client = anthropic.Anthropic(api_key=key)
+        else:
+            try:
+                import openai  # type: ignore[import-not-found]
+            except ImportError:
+                raise ValueError("The OpenAI SDK is not installed: pip install openai")
+            # Qwen speaks the OpenAI protocol, so the OpenAI SDK is reused with a
+            # base URL (DashScope compatible-mode by default for Qwen; set
+            # HYDE_OPENAI_BASE_URL for a local vLLM/Ollama serve).
+            # OPENAI_BASE_URL belongs to the OpenAI provider only: sending the Qwen
+            # key to a base URL the user set for OpenAI would point at the wrong server.
+            if provider == "qwen":
+                base_url = os.getenv("HYDE_OPENAI_BASE_URL") or DEFAULT_QWEN_BASE_URL
+            else:
+                base_url = os.getenv("HYDE_OPENAI_BASE_URL") or os.getenv("OPENAI_BASE_URL") or None
+            self.api_client = openai.OpenAI(api_key=key, base_url=base_url)
 
-            if os.getenv("OPENAI_API_KEY"):
-                self.api_client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-                self.backend = "openai"
-                print("HyDE: Using OpenAI API backend", file=sys.stderr)
-                return
-        except ImportError:
-            pass
+        self.api_provider = provider
+        # expand_query() dispatches on self.backend, so the backend has to name the
+        # provider that was chosen; leaving it as "api" falls through to the no-op
+        # branch and every API call silently returns the unexpanded query.
+        self.backend = provider
+        print(f"HyDE: Using {provider} API backend", file=sys.stderr)
 
-        try:
-            from cli_command import render
-        except ImportError:
-            from mcp_server.cli_command import render
-        raise ValueError(render(
-            "HyDE API backend is unavailable. Set an API key and install its SDK: "
-            "pip install anthropic openai"
-        ))
+    def _api_failure(self, exc: Exception, query: str, num_expansions: int) -> list[str]:
+        """Report an API failure. With HYDE_STRICT the failure is raised instead
+        of silently degrading to rule-based expansion."""
+        if self.strict:
+            raise ValueError(f"HyDE API call failed (HYDE_STRICT=true): {exc}") from exc
+        print(f"HyDE API error: {exc}, falling back to rule-based", file=sys.stderr)
+        return self._rule_based_expansion(query, num_expansions)
 
     def _init_local_backend(self):
         """Initialize local model backend (lightweight GPT-2 style)"""
@@ -149,6 +215,13 @@ class HyDEQueryExpander:
             return self._anthropic_expansion(query, num_expansions)
         elif self.backend == "openai":
             return self._openai_expansion(query, num_expansions)
+        elif self.backend == "qwen":
+            return self._openai_expansion(
+                query,
+                num_expansions,
+                model_env="HYDE_QWEN_MODEL",
+                default_model=DEFAULT_QWEN_MODEL,
+            )
         elif self.backend == "local":
             return self._local_expansion(query, num_expansions)
         else:
@@ -303,11 +376,16 @@ Write a clear, technical answer (2-3 sentences) that would help find relevant MP
             return [query, hypothetical_doc]
 
         except Exception as e:
-            print(f"HyDE API error: {e}, falling back to rule-based", file=sys.stderr)
-            return self._rule_based_expansion(query, num_expansions)
+            return self._api_failure(e, query, num_expansions)
 
-    def _openai_expansion(self, query: str, num_expansions: int) -> list[str]:
-        """Generate hypothetical documents using OpenAI API"""
+    def _openai_expansion(
+        self,
+        query: str,
+        num_expansions: int,
+        model_env: str = "HYDE_OPENAI_MODEL",
+        default_model: str = "gpt-4o-mini",
+    ) -> list[str]:
+        """Generate hypothetical documents via an OpenAI-protocol API (OpenAI or Qwen)"""
         try:
             prompt = f"""You are a patent law expert. Given the query below, write a concise hypothetical answer as it would appear in the USPTO Manual of Patent Examining Procedure (MPEP).
 
@@ -316,7 +394,7 @@ Query: {query}
 Write a clear, technical answer (2-3 sentences) that would help find relevant MPEP sections:"""
 
             response = self.api_client.chat.completions.create(  # type: ignore[union-attr]
-                model=os.environ.get("HYDE_OPENAI_MODEL", "gpt-4o-mini"),  # Fast, cheap model
+                model=os.environ.get(model_env, default_model),  # Fast, cheap model
                 max_tokens=200,
                 messages=[{"role": "user", "content": prompt}],
             )
@@ -325,8 +403,7 @@ Write a clear, technical answer (2-3 sentences) that would help find relevant MP
             return [query, hypothetical_doc]
 
         except Exception as e:
-            print(f"HyDE API error: {e}, falling back to rule-based", file=sys.stderr)
-            return self._rule_based_expansion(query, num_expansions)
+            return self._api_failure(e, query, num_expansions)
 
     def _local_expansion(self, query: str, num_expansions: int) -> list[str]:
         """Generate hypothetical documents using local model"""
