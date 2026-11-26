@@ -115,6 +115,28 @@ def is_mcp_tool(token: str) -> bool:
     return token not in OPENCODE_TOOLS and token not in QWEN_TOOLS
 
 
+def mcp_tool_names(root: pathlib.Path) -> list[str]:
+    """The tool names the MCP server registers, read from the source that defines them.
+
+    Both trees have to grant the same set of MCP tools, so the names come from the server rather
+    than from a list typed into the generator. Qwen Code can only name tools one at a time, so it
+    needs them; OpenCode expresses the same set with one rule for the whole server.
+    """
+    names = []
+    for path in sorted((root / "mcp_server" / "tools").rglob("*.py")):
+        lines = read_text(path).splitlines()
+        for index, line in enumerate(lines):
+            if line.strip() != "@mcp.tool()":
+                continue
+            # The tool name is on the def line, after any decorator between it and the tool decorator.
+            for later in lines[index + 1:index + 6]:
+                match = re.match(r"\s*(?:async\s+)?def (\w+)\(", later)
+                if match:
+                    names.append(match.group(1))
+                    break
+    return names
+
+
 def qwen_tool_name(token: str) -> str:
     """How Qwen Code matches a canonical tool. An MCP tool needs the server prefix to match at all."""
     if is_mcp_tool(token):
@@ -129,6 +151,23 @@ def opencode_action(token: str) -> str | None:
         # the action is the name setup registers and the tool part keeps any name it can match exactly.
         return f"{SERVER_NAME}_{OPENCODE_SANITISE.sub('_', token)}"
     return OPENCODE_TOOLS.get(token)
+
+
+def yaml_string(value: str) -> str:
+    """Quote a frontmatter value that YAML would read as something other than a string.
+
+    `[test-type]` is a flow sequence, and Qwen Code's command schema requires `argument-hint` to be a
+    string, so an unquoted bracketed hint fails validation and the whole command file is skipped.
+    """
+    if (
+        not value
+        or value[0] in "?|>@`!&*%#[{'\"&"
+        or value.startswith("- ")
+        or ": " in value
+        or value.endswith((":", " #"))
+    ):
+        return json.dumps(value)
+    return value
 
 
 def render_frontmatter(fields: dict[str, str | list]) -> str:
@@ -147,7 +186,7 @@ def render_frontmatter(fields: dict[str, str | list]) -> str:
                 else:
                     lines.append(f"  - {item}")
         else:
-            lines.append(f"{key}: {value}")
+            lines.append(f"{key}: {yaml_string(value)}")
     return "---\n" + "\n".join(lines) + "\n---\n"
 
 
@@ -187,24 +226,31 @@ def opencode_agent(fields: dict[str, str], body: str) -> str:
         if rule in rules:
             continue  # `write` and `edit` map to the same OpenCode action
         rules.append(rule)
-    # The deny-all above would also block the MCP server these agents exist to call. The canonical
-    # vocabulary has no action for a whole server, so the plugin's own server is allowed as a group;
-    # an agent that names specific MCP tools gets those rules from the loop above as well.
+    # The deny-all above would also block the MCP server these agents exist to call, so the plugin's own
+    # server is allowed as a group: it is the same set of tools as the names the Qwen Code tree lists,
+    # because Qwen Code cannot express a group and has to name them one by one. An agent that names
+    # specific MCP tools gets those rules from the loop above as well.
     rules.append({"action": f"{SERVER_NAME}_*", "resource": '"*"', "effect": "allow"})
     out["permissions"] = rules
     if "read" in tokens:
         # OpenCode's base policy answers `read *.env` with `ask`; the deny-all above
         # would replace that with `deny`. Re-adding it after the allow block keeps the
-        # prompt, because the last matching rule wins.
-        rules.append({"action": "read", "resource": '"*.env"', "effect": "ask"})
+        # prompt, because the last matching rule wins. The resource has to cover the whole
+        # family (`path.env`, `.env.local`), not only the exact `*.env` shape.
+        rules.append({"action": "read", "resource": '"*.env*"', "effect": "ask"})
     return render_frontmatter(out) + map_prose(body, OPENCODE_TOOLS)
 
 
-def qwen_agent(fields: dict[str, str], body: str) -> str:
+def qwen_agent(fields: dict[str, str], body: str, mcp_names: list[str]) -> str:
     out = {"name": fields.get("name", ""), "description": fields.get("description", "")}
-    names = [qwen_tool_name(token) for token in neutral_tools(fields.get("tools", ""))]
-    if names:
-        out["tools"] = names
+    tokens = neutral_tools(fields.get("tools", ""))
+    if tokens:
+        # Qwen Code matches an MCP tool only by its qualified name, so an agent that lists tools has to
+        # get the server's tools named one by one: this is the same set OpenCode grants with one rule
+        # for the whole server. An agent with no allowlist is left unrestricted on both clients.
+        out["tools"] = [qwen_tool_name(token) for token in tokens] + [
+            f"mcp__{SERVER_NAME}__{name}" for name in mcp_names
+        ]
     return render_frontmatter(out) + map_prose(body, QWEN_TOOLS)
 
 
@@ -216,11 +262,13 @@ def opencode_skill(fields: dict[str, str], body: str) -> str:
     return render_frontmatter(out) + map_prose(body, OPENCODE_TOOLS)
 
 
-def qwen_skill(fields: dict[str, str], body: str) -> str:
+def qwen_skill(fields: dict[str, str], body: str, mcp_names: list[str]) -> str:
     out = {"name": fields.get("name", ""), "description": fields.get("description", "")}
-    names = [qwen_tool_name(token) for token in neutral_tools(fields.get("tools", ""))]
-    if names:
-        out["allowedTools"] = names
+    tokens = neutral_tools(fields.get("tools", ""))
+    if tokens:
+        out["allowedTools"] = [qwen_tool_name(token) for token in tokens] + [
+            f"mcp__{SERVER_NAME}__{name}" for name in mcp_names
+        ]
     for key in ("priority", "paths", "user-invocable", "disable-model-invocation"):
         if key in fields:
             out[key] = fields[key]
@@ -282,12 +330,13 @@ def read_preserving_newlines(path: pathlib.Path) -> str:
 
 def build(root: pathlib.Path = ROOT) -> dict[pathlib.Path, str]:
     files: dict[pathlib.Path, str] = {}
+    mcp_names = mcp_tool_names(root)
 
     for path in sorted((root / "agents").glob("*.md")):
         fields, body = parse_frontmatter(read_text(path))
         stem = path.stem
         files[root / ".opencode" / "agents" / f"{stem}.md"] = opencode_agent(fields, body)
-        files[root / ".qwen" / "agents" / f"{stem}.md"] = qwen_agent(fields, body)
+        files[root / ".qwen" / "agents" / f"{stem}.md"] = qwen_agent(fields, body, mcp_names)
 
     for path in sorted((root / "commands").rglob("*.md")):
         fields, body = parse_frontmatter(read_text(path))
@@ -315,7 +364,7 @@ def build(root: pathlib.Path = ROOT) -> dict[pathlib.Path, str]:
             # would add a skill to the tree that the client never loads. tests report the
             # offending names rather than the generator shipping them.
             continue
-        files[root / ".qwen" / "skills" / skill_dir / "SKILL.md"] = qwen_skill(fields, body)
+        files[root / ".qwen" / "skills" / skill_dir / "SKILL.md"] = qwen_skill(fields, body, mcp_names)
 
     for path in sorted(p for p in (root / "skills").rglob("*") if p.is_file() and p.name != "SKILL.md"):
         if any(part in EXCLUDED_PARTS for part in path.relative_to(root).parts):
@@ -355,7 +404,11 @@ def is_generator_owned(path: pathlib.Path, root: pathlib.Path = ROOT) -> bool:
         # A generated skill directory mirrors a canonical skill, so everything under it is the
         # generator's copy. A directory the canonical source does not have is not something the
         # generator would ever write, so a file inside it is left alone.
-        return len(rest) >= 2 and (root / "skills" / rest[1]).is_dir()
+        if len(rest) < 2 or not (root / "skills" / rest[1]).is_dir():
+            return False
+        # Qwen Code refuses a skill name its pattern cannot match, so the generator never writes
+        # that skill into `.qwen/`, and a file it did not write there is not stale output.
+        return parts[0] == ".opencode" or QWEN_SKILL_NAME.match(rest[1])
     return path == root / ".qwen" / "settings.json"
 
 
@@ -394,8 +447,11 @@ def main(argv: list[str] | None = None) -> int:
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(expected)
             continue
-        if create_only(path, root) and path.read_bytes() != expected:
-            continue  # an existing settings.json belongs to whoever wrote it, not to the generator
+        if create_only(path, root) and not args.check:
+            # An existing settings.json belongs to whoever wrote it, so writing never overwrites it.
+            # `--check` is a verification mode and the committed settings.json is the hooks source
+            # rendered, so it is compared there; otherwise a change to hooks/hooks.json is invisible.
+            continue
         # Compare bytes: a CRLF file is not the same file as the LF content the generator writes,
         # so --check reports it instead of treating the decoded text as equal.
         if path.read_bytes() != expected:
@@ -416,6 +472,14 @@ def main(argv: list[str] | None = None) -> int:
             )
             for path in sorted(problems):
                 print(f"  {path}")
+            if pathlib.Path(".qwen/settings.json") in problems:
+                # Explaining this one is what makes the check actionable: settings.json is compared
+                # because the committed copy is the hooks source rendered, but writing never
+                # overwrites an existing file, so regenerating alone cannot fix it.
+                print(
+                    "  .qwen/settings.json is user configuration: put the hooks in hooks/hooks.json, "
+                    "or remove the file so the generator can write it."
+                )
             return 1
         print(f"{len(generated)} generated files are up to date")
         if kept:

@@ -1,6 +1,6 @@
 ---
 description: Check international patent application formalities for PCT compliance (PCT Rules 5-12, Administrative Instructions)
-argument-hint: "[optional: request | description | claims | abstract | drawings | all] application-text"
+argument-hint: "\"[optional: request | description | claims | abstract | drawings | all] application-text\""
 ---
 
 # PCT Formalities Check

@@ -59,6 +59,7 @@ This tool is built for people who cannot afford a mistake, so it is honest to a 
 - [What this tool will and will not do](#read-this-first-what-this-tool-will-and-will-not-do)
 - [The easy way: Patent Creator Studio](#the-easy-way-patent-creator-studio)
 - [Quick Start](#quick-start)
+- [Upgrading from the upstream Claude version](#upgrading-from-the-upstream-claude-version)
 - [What Can I Actually Do With This?](#what-can-i-actually-do-with-this)
 - [How It Works](#how-it-works)
 - [What Setup Does](#what-setup-does)
@@ -199,6 +200,34 @@ On a Mac, a bare `pip install ...` outside a private folder fails with `external
 </details>
 
 ---
+
+## Upgrading from the upstream Claude version
+
+If you installed `claude-patent-creator` from upstream before, the fork does not read its files, so moving over is
+a few deliberate steps rather than an automatic migration:
+
+1. **Use a separate environment.** Both packages import the same `mcp_server` package, so they cannot share one
+   virtual environment. Install the fork in its own:
+   ```bash
+   pip uninstall claude-patent-creator
+   python3 -m venv qwen-patent-creator-venv
+   qwen-patent-creator-venv/bin/pip install git+https://github.com/DanielTillett/Qwen-Patent-Creator.git
+   ```
+2. **Remove the old client entry**, or the client starts two servers with the same tools:
+   `claude mcp remove claude-patent-creator`. The fork's `setup` writes its own entry,
+   `qwen-patent-creator`, for the client you name with `--client`.
+3. **Move your settings and index if you want them.** The fork writes to its own folders:
+   `~/.config/qwen-patent-creator/config.json` and `~/.local/share/qwen-patent-creator/data`
+   (on Windows, both under `%APPDATA%\qwen-patent-creator`). Nothing falls back to the old
+   `claude-patent-creator` folders, so copy what you want to keep:
+   ```bash
+   mkdir -p ~/.config/qwen-patent-creator
+   cp ~/.config/claude-patent-creator/config.json ~/.config/qwen-patent-creator/
+   mkdir -p ~/.local/share/qwen-patent-creator
+   cp -R ~/.local/share/claude-patent-creator/data ~/.local/share/qwen-patent-creator/
+   ```
+   Skipping the data copy is fine; setup rebuilds the index, which takes 5 to 45 minutes. Environment keys such as
+   `QWEN_API_KEY` are read from the environment or a `.env` file, not from `config.json`.
 
 ## What Can I Actually Do With This?
 

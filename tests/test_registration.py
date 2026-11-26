@@ -75,14 +75,36 @@ class TestConfigPaths:
         assert reg.config_path("claude", "user", home) == home / ".claude.json"
         assert reg.config_path("claude", "project", home) == home / ".mcp.json"
 
-    def test_an_existing_file_beats_the_default_name(self, home):
+    def test_an_existing_file_beats_the_default_name(self, home, monkeypatch):
         # The default is `opencode.jsonc`, but a project or user that already has
         # `opencode.json` keeps it.
+        monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
         base = home / ".config" / "opencode"
         existing = base / "opencode.json"
         existing.parent.mkdir(parents=True, exist_ok=True)
         existing.write_text("{}", encoding="utf-8")
         assert reg.config_path("opencode", "user", home) == existing
+
+    def test_opencode_uses_xdg_config_home(self, home, monkeypatch):
+        # OpenCode reads its user configuration from the XDG location, so a user who sets
+        # XDG_CONFIG_HOME gets that location instead of `~/.config`, and a registration round
+        # trip has to find the file it just wrote there.
+        xdg = home / "xdg"
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg))
+        assert reg.config_path("opencode", "user", home) == xdg / "opencode" / "opencode.jsonc"
+        # The other clients keep their own home-based files: XDG is OpenCode's convention.
+        assert reg.config_path("qwen-code", "user", home) == home / ".qwen" / "settings.json"
+        assert reg.config_path("claude", "user", home) == home / ".claude.json"
+
+        path = written("opencode", "user", home, '{\n  "mcp": {\n    "servers": {}\n  }\n}\n')
+        ok, detail = reg.register("opencode", "user", PYTHON, SERVER, home)
+        assert ok, detail
+        assert reg.read_entry(path, "opencode") == {"type": "local", "command": [str(PYTHON), str(SERVER)]}
+
+    def test_a_blank_xdg_config_home_falls_back_to_the_home_directory(self, home, monkeypatch):
+        # An empty or whitespace-only XDG_CONFIG_HOME is not a location, so `~/.config` is used.
+        monkeypatch.setenv("XDG_CONFIG_HOME", "   ")
+        assert reg.config_path("opencode", "user", home) == home / ".config" / "opencode" / "opencode.jsonc"
 
     def test_qwen_code_reads_settings_json(self, home):
         assert reg.config_path("qwen-code", "user", home) == home / ".qwen" / "settings.json"
@@ -258,6 +280,28 @@ class TestRoundTrips:
         assert reg.read_entry(path, "opencode") == {
             "type": "local",
             "command": [str(PYTHON), str(SERVER)],
+        }
+
+    def test_a_comment_inside_our_own_entry_is_kept_when_it_is_rewritten(self, home):
+        # Re-rendering the whole value would drop the comments the user wrote inside the entry,
+        # so only the fields being updated are substituted and the comments stay where they were.
+        path = written(
+            "qwen-code", "project", home,
+            '{\n  "mcpServers": {\n    "' + NAME + '": {\n'
+            '      "command": "old", // mine\n'
+            '      "args": ["x"],\n'
+            '      "env": { "A": "B" }  /* and this */\n'
+            '    },\n    "other": { "command": "y" }\n  }\n}\n',
+        )
+        ok, detail = reg.register("qwen-code", "project", PYTHON, SERVER, home)
+        assert ok, detail
+        text = path.read_text()
+        assert "// mine" in text and "/* and this */" in text
+        assert '"old"' not in text
+        assert reg.read_entry(path, "qwen-code") == {
+            "command": str(PYTHON),
+            "args": [str(SERVER)],
+            "env": {"A": "B"},
         }
 
     def test_running_it_twice_changes_nothing(self, home):

@@ -81,7 +81,9 @@ class TestTheVersionGuardChecksTheRightFile:
         """
         ci = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
         guard = ci.split("jobs:")[1].split("  plugin-trees-current:")[0]
-        assert "grep -q '^+version = '" in guard
+        # The guard matches the version line, not one formatting of it, so a reformatted
+        # pyproject.toml still trips it.
+        assert "grep -qE '^\\+\\s*version\\s*=\\s*\"[^\"]+\"'" in guard
         assert "pyproject.toml | grep" in guard
         assert "_version.py" not in guard
 

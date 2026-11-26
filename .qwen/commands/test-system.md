@@ -1,6 +1,6 @@
 ---
 description: Run local diagnostics and selected optional service tests
-argument-hint: [test-type]
+argument-hint: "[test-type]"
 ---
 
 # Test Patent Creator

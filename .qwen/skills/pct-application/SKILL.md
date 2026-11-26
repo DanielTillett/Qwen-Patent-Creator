@@ -5,6 +5,42 @@ allowedTools:
   - run_shell_command
   - read_file
   - write_file
+  - mcp__qwen-patent-creator__review_patent_claims
+  - mcp__qwen-patent-creator__review_specification
+  - mcp__qwen-patent-creator__check_formalities
+  - mcp__qwen-patent-creator__check_bigquery_status
+  - mcp__qwen-patent-creator__search_patents_bigquery
+  - mcp__qwen-patent-creator__get_patent_bigquery
+  - mcp__qwen-patent-creator__get_patents_bigquery
+  - mcp__qwen-patent-creator__search_patents_by_cpc_bigquery
+  - mcp__qwen-patent-creator__search_patents_by_ipc_bigquery
+  - mcp__qwen-patent-creator__search_patent_family_bigquery
+  - mcp__qwen-patent-creator__render_diagram
+  - mcp__qwen-patent-creator__create_flowchart
+  - mcp__qwen-patent-creator__create_block_diagram
+  - mcp__qwen-patent-creator__add_diagram_references
+  - mcp__qwen-patent-creator__get_diagram_templates
+  - mcp__qwen-patent-creator__check_diagram_tools_status
+  - mcp__qwen-patent-creator__review_epo_claims
+  - mcp__qwen-patent-creator__review_epo_specification
+  - mcp__qwen-patent-creator__check_epo_formalities
+  - mcp__qwen-patent-creator__check_pct_formalities
+  - mcp__qwen-patent-creator__check_epo_api_status
+  - mcp__qwen-patent-creator__search_epo_patents
+  - mcp__qwen-patent-creator__get_epo_patent
+  - mcp__qwen-patent-creator__get_epo_patent_family
+  - mcp__qwen-patent-creator__check_google_patents_status
+  - mcp__qwen-patent-creator__search_patents_google
+  - mcp__qwen-patent-creator__search_non_patent_literature
+  - mcp__qwen-patent-creator__search_mpep
+  - mcp__qwen-patent-creator__get_mpep_section
+  - mcp__qwen-patent-creator__check_package
+  - mcp__qwen-patent-creator__search_patent_law
+  - mcp__qwen-patent-creator__search_uspto_api
+  - mcp__qwen-patent-creator__get_uspto_patent
+  - mcp__qwen-patent-creator__get_recent_uspto_patents
+  - mcp__qwen-patent-creator__check_uspto_api_status
+  - mcp__qwen-patent-creator__check_web_history
 ---
 
 # PCT Application Skill

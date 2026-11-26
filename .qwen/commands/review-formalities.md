@@ -1,6 +1,6 @@
 ---
 description: Check patent application formalities (abstract, title, drawings per MPEP 608)
-argument-hint: "[optional: abstract | title | drawings | all] abstract-text title-text spec-text"
+argument-hint: "\"[optional: abstract | title | drawings | all] abstract-text title-text spec-text\""
 ---
 
 # Formalities Check

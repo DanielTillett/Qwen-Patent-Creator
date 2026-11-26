@@ -10,9 +10,14 @@ names, argument syntax and hook contract.
 
 import importlib.util
 import json
+import os
 import pathlib
 import re
+import shutil
+import subprocess
 from pathlib import Path
+
+import pytest
 
 from mcp_server import registration as reg
 
@@ -98,6 +103,40 @@ class TestCanonicalSourceIsClientNeutral:
             assert "allowed-tools:" not in text, name
             assert "\nmodel:" not in text, name
 
+    def test_an_agent_that_uses_a_skill_lists_the_skill_tool(self):
+        """An allowlist is a grant, so an agent told to invoke a skill has to name that tool.
+
+        Agents with no `tools:` are unrestricted on both clients and need no grant; the ones
+        that list tools are restricted to what they list, so a skill they mention has to be
+        in the list or the instruction in the body cannot be carried out.
+        """
+        offenders = []
+        for path in sorted((REPO_ROOT / "agents").glob("*.md")):
+            fields, _ = gen.parse_frontmatter(path.read_text(encoding="utf-8"))
+            tokens = gen.neutral_tools(fields.get("tools", ""))
+            if not tokens:
+                continue
+            if re.search(r"(uses|invokes|load)\S*[^\n]*skill", path.read_text(encoding="utf-8"), re.I) and (
+                "skill" not in tokens
+            ):
+                offenders.append(path.name)
+        assert offenders == []
+        assert any("skill" in gen.neutral_tools(gen.parse_frontmatter(p.read_text(encoding="utf-8"))[0].get("tools", ""))
+                   for p in (REPO_ROOT / "agents").glob("*.md"))
+
+    def test_skill_tool_appears_in_both_trees_for_the_agents_that_list_it(self):
+        checked = 0
+        for path in sorted((REPO_ROOT / "agents").glob("*.md")):
+            fields, _ = gen.parse_frontmatter(path.read_text(encoding="utf-8"))
+            if "skill" not in gen.neutral_tools(fields.get("tools", "")):
+                continue
+            checked += 1
+            opencode = generated(".opencode", f"agents/{path.name}").split("---")[1]
+            qwen = generated(".qwen", f"agents/{path.name}").split("---")[1]
+            assert f"  - action: {gen.opencode_action('skill')}" in opencode, path.name
+            assert f"  - {gen.qwen_tool_name('skill')}" in qwen, path.name
+        assert checked > 0
+
     def test_tool_entries_are_neutral_or_real_mcp_tools(self):
         tools = mcp_tool_names()
         for name, path in canonical_files().items():
@@ -148,9 +187,51 @@ class TestGeneratedFrontmatterShape:
     def test_an_empty_tool_list_produces_no_field(self):
         source = {"name": "an-agent", "description": "Description.", "tools": ""}
         assert "permissions" not in gen.opencode_agent(source, "Body")
-        assert "tools" not in gen.qwen_agent(source, "Body")
-        assert "allowedTools" not in gen.qwen_skill(source, "Body")
+        assert "tools" not in gen.qwen_agent(source, "Body", [])
+        assert "allowedTools" not in gen.qwen_skill(source, "Body", [])
         assert gen.render_frontmatter({"name": "a", "description": "d", "tools": []}) == "---\nname: a\ndescription: d\n---\n"
+
+    def test_a_value_yaml_would_read_as_something_else_is_quoted(self):
+        """Qwen Code validates `argument-hint` as a string, so `[test-type]` has to be quoted.
+
+        Unquoted, YAML parses it as a flow sequence and the command file fails schema
+        validation, so the whole command is skipped rather than loaded.
+        """
+        assert gen.yaml_string("[test-type]") == '"[test-type]"'
+        assert gen.yaml_string("plain text") == "plain text"
+        fields, _ = gen.parse_frontmatter(
+            "---\ndescription: A command\nargument-hint: [test-type]\n---\nBody.\n"
+        )
+        rendered = gen.render_frontmatter({"description": fields["description"],
+                                          "argument-hint": fields["argument-hint"]})
+        assert 'argument-hint: "[test-type]"' in rendered
+        # A value already written as a YAML string is left as it was, so the tree does not
+        # grow quotes it does not need.
+        assert gen.yaml_string("already quoted") == "already quoted"
+
+    def test_no_generated_value_is_left_in_a_form_yaml_would_misread(self):
+        # The canonical source does have a bracketed hint, so the check proves the generator
+        # quotes it rather than passing the ambiguous form through.
+        assert any(
+            gen.yaml_string(value) != value
+            for path in canonical_files().values()
+            for value in gen.parse_frontmatter(path.read_text(encoding="utf-8"))[0].values()
+            if isinstance(value, str)
+        )
+        offenders = []
+        for target in TARGETS:
+            for path in sorted((REPO_ROOT / target).rglob("*.md")):
+                lines = path.read_text(encoding="utf-8").split("\n")
+                if lines[0] != "---":
+                    continue
+                for line in lines[1 : lines.index("---", 1)]:
+                    if line != line.strip():
+                        continue  # a nested list item is not a top-level value
+                    key, _, value = line.partition(":")
+                    value = value.strip()
+                    if value and value[0] in "?|>@`!&*%#[{'&" and not value.startswith('"'):
+                        offenders.append(f"{path.relative_to(REPO_ROOT)}: {key}")
+        assert offenders == []
 
     def test_no_plugin_root_variable(self):
         # `CLAUDE_PLUGIN_ROOT` only exists inside the Claude plugin runtime; skills must use
@@ -202,9 +283,9 @@ class TestToolMappingPerClient:
                 continue
             checked += 1
             block = generated(".opencode", f"agents/{path.name}").split("---")[1]
-            if '"*.env"' not in block:
+            if '"*.env*"' not in block:
                 offenders.append(f"{path.name}: no ask rule")
-            elif block.rindex("effect: allow") > block.index('"*.env"'):
+            elif block.rindex("effect: allow") > block.index('"*.env*"'):
                 offenders.append(path.name)
         assert offenders == []
         assert checked > 0
@@ -222,8 +303,31 @@ class TestToolMappingPerClient:
 
         # Where a client does read a tool list, the qualified name is what appears.
         source = {"name": "an-agent", "description": "Description.", "tools": tool}
-        assert f"  - mcp__{gen.SERVER_NAME}__{tool}" in gen.qwen_agent(source, "Body")
-        assert f"  - action: {gen.SERVER_NAME}_{tool}" in gen.opencode_agent(source, "Body")
+        names = gen.mcp_tool_names(REPO_ROOT)
+        assert len(names) == len(mcp_tool_names()), names
+        assert tool in names
+        assert f"  - mcp__{gen.SERVER_NAME}__{tool}" in gen.qwen_agent(source, "Body", names)
+        assert f"  - action: {gen.SERVER_NAME}_*" in gen.opencode_agent(source, "Body")
+
+    def test_both_trees_grant_the_same_tools_to_the_plugin_server(self):
+        """The two trees have to allow the same set, expressed the way each client can.
+
+        Qwen Code names tools one at a time; OpenCode matches an action of the form
+        `<server>_<tool>`, so one group rule covers the same set. A list typed into the
+        generator would drift from the server it is supposed to describe, so both come from
+        the source that registers the tools.
+        """
+        names = gen.mcp_tool_names(REPO_ROOT)
+        assert set(names) == mcp_tool_names()
+        source = {"name": "an-agent", "description": "Description.", "tools": "read"}
+        qwen = gen.qwen_agent(source, "Body", names)
+        opencode = gen.opencode_agent(source, "Body")
+        assert f"  - action: {gen.SERVER_NAME}_*" in opencode
+        for name in names:
+            assert f"mcp__{gen.SERVER_NAME}__{name}" in qwen
+            assert f"{gen.SERVER_NAME}_{name}" == gen.opencode_action(name)
+        # An agent that names no tools gets no list on either client, so it is left unrestricted.
+        assert "mcp__" not in gen.qwen_agent({"name": "a", "description": "d"}, "Body", names)
 
     def test_command_tool_lists_are_dropped_because_neither_client_enforces_them(self):
         # Qwen Code's command schema keeps description, argument-hint, when_to_use and
@@ -332,6 +436,43 @@ class TestHooks:
         settings = json.loads(generated(".qwen", "settings.json"))
         command = settings["hooks"]["SessionStart"][0]["hooks"][0]["command"]
         assert "Patent Creator System Ready" in command
+
+    def test_the_session_script_does_not_depend_on_one_clients_env_file(self, tmp_path):
+        """`$CLAUDE_ENV_FILE` only exists in the Claude hook runtime.
+
+        OpenCode and Qwen Code read what a hook prints, so the script prints its notes as well
+        as appending them, and it still reports when a client hands it no file at all.
+        """
+        bash = shutil.which("bash")
+        if not bash:
+            pytest.skip("bash is needed to run the session-start script")
+
+        credentials = tmp_path / ".config" / "gcloud"
+        credentials.mkdir(parents=True)
+        (credentials / "application_default_credentials.json").write_text("{}", encoding="utf-8")
+        script = str(REPO_ROOT / "scripts" / "setup-env.sh")
+
+        env_file = tmp_path / "claude-env.txt"
+        run = subprocess.run(
+            [bash, script],
+            capture_output=True,
+            text=True,
+            env={**os.environ, "HOME": str(tmp_path), "CLAUDE_ENV_FILE": str(env_file)},
+        )
+        assert run.returncode == 0, run.stderr
+        assert "# BigQuery authenticated" in run.stdout
+        assert "# BigQuery authenticated" in env_file.read_text(encoding="utf-8")
+
+        # The same script under a client that gives it nothing: the notes still reach the run.
+        plain = subprocess.run(
+            [bash, script],
+            capture_output=True,
+            text=True,
+            env={k: v for k, v in os.environ.items() if k != "CLAUDE_ENV_FILE"} | {"HOME": str(tmp_path)},
+        )
+        assert plain.returncode == 0, plain.stderr
+        assert "# BigQuery authenticated" in plain.stdout
+        assert sorted(p.name for p in tmp_path.iterdir()) == [".config", "claude-env.txt"]
 
 
 class TestSupportingFiles:
@@ -495,6 +636,19 @@ class TestGeneratorRoundTripsTheBytesItWrites:
         assert gen.main([]) == 0
         assert not stray.exists()
 
+    def test_check_reports_a_stale_generated_file_without_removing_it(self, tmp_path, monkeypatch):
+        """`--check` is a verification mode, so it reports stale files instead of cleaning them up."""
+        root = minimal_canonical_tree(tmp_path)
+        monkeypatch.setattr(gen, "ROOT", root)
+        gen.main([])
+        stray = root / ".qwen" / "commands" / "left-over.md"
+        stray.write_text("nothing generates this\n", encoding="utf-8")
+        assert gen.main(["--check"]) == 1
+        assert stray.exists(), "the file is reported, not deleted"
+        assert gen.main([]) == 0
+        assert not stray.exists()
+        assert gen.main(["--check"]) == 0
+
     def test_check_reports_a_hand_edited_generated_file(self, tmp_path, monkeypatch):
         root = minimal_canonical_tree(tmp_path)
         monkeypatch.setattr(gen, "ROOT", root)
@@ -550,8 +704,30 @@ class TestGeneratorRoundTripsTheBytesItWrites:
             assert path.exists(), path
             assert path.read_text(encoding="utf-8") == "not generator output\n", path
 
-    def test_an_existing_settings_json_is_never_rewritten(self, tmp_path, monkeypatch):
-        """Qwen Code reads .qwen/settings.json as user configuration, so it is create-only."""
+    def test_a_markdown_file_in_a_mirrored_skill_directory_is_generator_output(self, tmp_path, monkeypatch):
+        """A skill copy mirrors its canonical directory, so anything inside it comes from the source.
+
+        That is what makes stale cleanup safe: the generator only removes a file whose path it
+        would itself write, and it writes the whole mirror of each canonical skill directory.
+        A directory the canonical source does not have is not something it would write, so a
+        hand-added file there is left alone.
+        """
+        root = minimal_canonical_tree(tmp_path)
+        monkeypatch.setattr(gen, "ROOT", root)
+        gen.main([])
+        mirrored = root / ".opencode" / "skills" / "a-skill" / "notes.md"
+        orphan = root / ".opencode" / "skills" / "a-hand-added-skill" / "notes.md"
+        for path in (mirrored, orphan):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("text\n", encoding="utf-8")
+        assert gen.is_generator_owned(mirrored, root)
+        assert not gen.is_generator_owned(orphan, root)
+        assert gen.main([]) == 0
+        assert not mirrored.exists()
+        assert orphan.exists()
+
+    def test_an_existing_settings_json_is_never_rewritten(self, tmp_path, monkeypatch, capsys):
+        """Qwen Code reads .qwen/settings.json as user configuration, so writing never overwrites it."""
         root = minimal_canonical_tree(tmp_path)
         monkeypatch.setattr(gen, "ROOT", root)
         fresh = root / ".qwen" / "settings.json"
@@ -559,8 +735,36 @@ class TestGeneratorRoundTripsTheBytesItWrites:
         fresh.write_text('{ "hooks": { "PostToolUse": [] } }\n', encoding="utf-8")
         assert gen.main([]) == 0
         assert fresh.read_text(encoding="utf-8") == '{ "hooks": { "PostToolUse": [] } }\n'
-        assert gen.main(["--check"]) == 0, "a user's file is not reported as drift"
         assert gen.is_generator_owned(fresh, root) and gen.create_only(fresh, root)
+        # `--check` is a verification mode rather than a write, so it still compares that file:
+        # the committed settings.json is the hooks source rendered, and without the comparison a
+        # change to hooks/hooks.json would leave `--check` passing on a tree that no longer matches it.
+        assert gen.main(["--check"]) == 1, "the committed settings.json is checked against the hooks source"
+        # Because writing skips an existing settings.json, regenerating cannot resolve that drift, so
+        # the message says what to do about it rather than telling the developer to run the generator.
+        assert "user configuration" in capsys.readouterr().out
+
+    def test_a_change_to_the_hooks_source_is_visible_to_check(self, tmp_path, monkeypatch):
+        root = minimal_canonical_tree(tmp_path)
+        monkeypatch.setattr(gen, "ROOT", root)
+        assert gen.main([]) == 0
+        assert gen.main(["--check"]) == 0
+        (root / "hooks" / "hooks.json").write_text(
+            '{"hooks": {"SessionStart": [{"matcher": "*", "hooks": [{"type": "command", "command": "echo hi"}]}]}}\n',
+            encoding="utf-8",
+        )
+        assert gen.main(["--check"]) == 1
+        # The existing settings.json is not rewritten, so this is what a developer has to do:
+        # remove the file (or move their own hooks into the canonical source) and regenerate.
+        assert gen.main([]) == 0
+        assert gen.main(["--check"]) == 1
+        (root / ".qwen" / "settings.json").unlink()
+        assert gen.main([]) == 0
+        assert gen.main(["--check"]) == 0
+        assert "SessionStart" in (root / ".qwen" / "settings.json").read_text(encoding="utf-8")
+        # OpenCode has no hook mechanism equivalent to Qwen's settings.json, so only the Qwen tree
+        # carries the hooks and only that file can be out of date with the source.
+        assert not (root / ".opencode" / "settings.json").exists()
 
     def test_a_skill_name_qwen_cannot_match_is_skipped_for_that_target(self, tmp_path, monkeypatch):
         """A name Qwen's pattern refuses would add a skill to the tree that the client never loads."""

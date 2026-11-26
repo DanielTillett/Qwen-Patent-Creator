@@ -151,7 +151,7 @@ class TestCriterion2ColdInstallWritesNothing:
         assert cli.main() == 0
 
 
-class TestCriterion3AProjectEntryWinsOverTheUserOne:
+class TestCriterion3ProjectScopeWritesAndReadsTheProjectFile:
     def test_a_project_scope_writes_the_project_file_and_not_the_home_one(self, home):
         project = home / "project"
         project.mkdir()
@@ -218,15 +218,51 @@ class TestCriterion4TheNamesTheClientsDiscover:
 class TestCriterion5CheckerOutputAndDeniedTools:
     """The live half of this criterion needs a Qwen-run agent; the reason it holds is checkable."""
 
+    # What a checker is not allowed to read: anything about the client it runs in, or about the
+    # model behind it. The server's own configuration is a different thing — an analyzer may honour
+    # its data directory or an opt-in flag without the verdict changing between clients, which is
+    # what the criterion actually claims.
+    CLIENT_OR_MODEL_CONFIG = (
+        "QWEN_API_KEY",
+        "OPENAI_API_KEY",
+        "OPENAI_BASE_URL",
+        "ANTHROPIC_API_KEY",
+        "HYDE_API_PROVIDER",
+        "HYDE_MODEL",
+        "HYDE_BACKEND",
+        "anthropic",
+        "openai",
+        "ollama",
+        ".claude.json",
+        "opencode.json",
+        "settings.json",
+    )
+    SERVER_CONFIG = ("PATENT_DATA_DIR", "PATENT_CONFIG_DIR", "PATENT_ENABLE_ANTECEDENT_CHECK", "config.json")
+
+    def checkers(self):
+        return sorted(list(REPO_ROOT.glob("mcp_server/*checker*.py")) + list(REPO_ROOT.glob("mcp_server/*analy*.py")))
+
     def test_checkers_read_no_client_or_model_configuration(self):
-        # The same fixture gives the same verdict in any client because a checker has nothing
-        # to read about the client: no key, no model, no provider.
-        offenders = []
-        for path in sorted(REPO_ROOT.glob("mcp_server/*checker*.py")):
+        offenders = {}
+        for path in self.checkers():
             text = path.read_text(encoding="utf-8")
-            if LLM_IMPORT.search(text) or "environ" in text or "getenv" in text:
-                offenders.append(path.name)
-        assert offenders == []
+            hits = [marker for marker in self.CLIENT_OR_MODEL_CONFIG if marker in text]
+            if hits:
+                offenders[path.name] = hits
+        assert offenders == {}
+        assert len(self.checkers()) >= 7, "the checkers and the analyzers are both rule-based"
+
+    def test_the_environment_a_checker_reads_is_its_own_not_the_clients(self):
+        reads = []
+        for path in self.checkers():
+            for line in path.read_text(encoding="utf-8").splitlines():
+                # A comment may mention an environment variable without reading one, so only the
+                # reads themselves are checked.
+                if "os.environ" in line or "os.getenv" in line:
+                    reads.append((path.name, line.strip()))
+        assert reads, "a checker honours its own opt-in flag"
+        for name, line in reads:
+            assert any(marker in line for marker in self.SERVER_CONFIG), f"{name}: {line}"
 
     def test_the_same_fixture_gives_the_same_verdict_under_a_qwen_and_an_anthropic_run(self, monkeypatch):
         fixture = (
@@ -256,12 +292,15 @@ class TestCriterion5CheckerOutputAndDeniedTools:
         assert effect_for(frontmatter, f"{NAME}_review_patent_claims") == "allow"
         # The `.env` rule is added after the allow block, so it is the last match for a
         # credential file and the run asks instead of reading it.
-        assert effect_for(frontmatter, "read", "*.env") == "ask"
+        assert effect_for(frontmatter, "read", "*.env*") == "ask"
 
-    def test_qwen_refuses_a_tool_that_is_not_in_the_agents_list(self):
+    def test_qwen_refuses_a_tool_the_agent_does_not_list(self):
         source = {"name": "an-agent", "description": "Description.", "tools": "read, review_patent_claims"}
-        listed = gen.qwen_agent(source, "Body").split("---")[1]
+        listed = gen.qwen_agent(source, "Body", gen.mcp_tool_names(REPO_ROOT)).split("---")[1]
         assert f"mcp__{NAME}__review_patent_claims" in listed
+        # A tool outside the MCP server is only granted when the agent names it, so `bash` is refused.
+        # The server's own tools are granted as a set, because Qwen cannot express a group and the
+        # generator lists them from the definitions in `mcp_server/tools/`.
         assert "run_shell_command" not in listed
 
 
@@ -289,7 +328,11 @@ class TestCriterion7TheCIguardsMatchTheLayout:
         ci = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
         watched = re.search(r"git diff [^\n]*-- skills/ agents/ commands/ hooks/ \.opencode/ \.qwen/", ci)
         assert watched, "the guard must watch the generated trees, not only the canonical source"
-        assert "^+version = " in ci, "the guard must check the version in pyproject.toml"
+        # The literal is compared as text, not as a pattern, so the assertion states the exact
+        # command the guard runs.
+        assert "grep -qE '^\\+\\s*version\\s*=\\s*\"[^\"]+\"'" in ci, (
+            "the guard must check the version line, not a literal formatting"
+        )
 
     def test_lint_ignores_the_generated_trees(self):
         # The generated copies are checked by the generator, not by a formatter, so a formatter

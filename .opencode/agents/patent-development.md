@@ -24,11 +24,14 @@ permissions:
   - action: glob
     resource: "*"
     effect: allow
+  - action: skill
+    resource: "*"
+    effect: allow
   - action: qwen-patent-creator_*
     resource: "*"
     effect: allow
   - action: read
-    resource: "*.env"
+    resource: "*.env*"
     effect: ask
 ---
 

@@ -1,6 +1,6 @@
 ---
 description: Complete patent application review (claims + specification + formalities in parallel)
-argument-hint: "Provide complete application text (claims, specification, abstract)"
+argument-hint: "\"Provide complete application text (claims, specification, abstract)\""
 ---
 
 # Complete Patent Application Review

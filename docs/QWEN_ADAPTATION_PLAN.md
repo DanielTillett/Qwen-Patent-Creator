@@ -33,10 +33,11 @@ HyDE is opt-in (`HYDE_BACKEND=api` plus `PATENT_MPEP_USE_HYDE=true`) and is the 
 - `verify_config_command` (`cli.py:1203`) and `_resolve_w2x_cli()` (`cli.py:594-595`, which returns `'claude'` unconditionally, and `cli.py:158` which prints Claude-specific instructions) need to follow the selected client.
 - Config shapes differ, so registration is per-client:
   - Claude Code: `claude mcp add` / `~/.claude.json`, existing behaviour preserved.
-  - OpenCode (V2): `mcp.servers.<name>` with `type: "local"`, `command` as an array, optional `environment`. V1 wrote server names directly under `mcp`; both shapes must be read, V2 is written. File: `opencode.json`/`opencode.jsonc`, project or global (`~/.config/opencode/`).
+  - OpenCode (V2): `mcp.servers.<name>` with `type: "local"`, `command` as an array, optional `environment`. V1 wrote server names directly under `mcp`; both shapes must be read, V2 is written. File: `opencode.json`/`opencode.jsonc`, project or global (`$XDG_CONFIG_HOME/opencode/`, defaulting to `~/.config/opencode/`); an existing `opencode.jsonc` wins over the default name.
   - Qwen Code: `mcpServers.<name>`, `.qwen/settings.json`.
   - Existing entries and comments (JSONC) are preserved: read, merge, write; never truncate a user's config.
-- Server name is `<name>`, which becomes the tool prefix `<name>_<tool>` in OpenCode. Use `qwen-patent-creator` so it cannot collide with an upstream server already registered under `patent-creator`.
+- Server name is `<name>`, which becomes the tool prefix `<name>_<tool>` in OpenCode. Use `qwen-patent-creator` so it
+  cannot collide with an upstream server already registered under `claude-patent-creator`.
 - Handshake test wording ("Testing the connection the way Claude Code will...") becomes client-neutral.
 
 ## 4. Plugin layer → Qwen clients
@@ -76,7 +77,14 @@ hooks/hooks.json                  canonical hook definitions
 ```
 
 `scripts/build_plugin_targets.py` emits the trees; output must be byte-stable (sorted frontmatter keys,
-sorted files) and a parity test fails if the committed trees drift from the canonical source.
+sorted files) and a parity test fails if the committed trees drift from the canonical source. `--check` compares
+every generated file including `.qwen/settings.json`, and reports a stale file rather than deleting it. When it
+writes, it never overwrites a `settings.json` that already exists and is not generator-owned — that file can hold a
+user's own keys — so a hook change has to be applied to a file the generator created, and a drift between
+`hooks/hooks.json` and a hand-edited `settings.json` is reported with the command to fix it. Frontmatter values that
+YAML would read as something other than a string (a bracketed `argument-hint`, a value starting with `#` or `!`) are
+quoted, because Qwen Code's command schema requires `argument-hint` to be a string and an unquoted one makes the
+whole command file fail validation.
 
 Canonical frontmatter rules:
 
@@ -100,14 +108,19 @@ Per-target mapping:
 
 Two further rules the generator implements:
 
-- **MCP tools are qualified per client.** Qwen Code names them `mcp__qwen-patent-creator__<tool>`; an OpenCode
-  permission action is `<server>_<tool>` with non-word characters turned into `_`, so
-  `qwen_patent_creator_<tool>`. A bare tool name does not match an MCP tool.
+- **MCP tools are qualified per client, from the server's own tool definitions.** Qwen Code needs one name per tool,
+  `mcp__qwen-patent-creator__<tool>`, so the generator lists all 36; OpenCode expresses the same set with one group
+  rule, `qwen-patent-creator_*`. An action is `<server>_<tool>`, and the server part is the registered name unchanged
+  because OpenCode's sanitiser keeps `-` and `_` — a tool part is sanitised only when it has a character outside
+  `[A-Za-z0-9_-]`. A bare tool name matches neither client, and the names are emitted only when the canonical
+  `tools:` allowlist is non-empty, so an agent that inherits its permissions does not get a grant it never asked for.
 - **OpenCode permissions are appended to an allow-all default policy, and the last matching rule wins.** A
   canonical `tools:` allowlist therefore needs a leading `{action: "*", resource: "*", effect: deny}` rule before
   the per-tool allows. `write` and `edit` map to the same action, so duplicate rules are skipped; `todowrite` has no
   OpenCode action and is omitted. When an agent may read or write, an `external_directory` allow keeps the default
-  allowance for the data directory outside the project.
+  allowance for the data directory outside the project, and an agent with `read` gets a trailing `read` / `*.env*` /
+  `ask` rule so a credential file is asked for rather than read — the resource is `*.env*` rather than `*.env` so it
+  still matches `.env.local`, which is where a Qwen key usually lives.
 
 ## 5. Naming and packaging (blocks publishing)
 
@@ -144,12 +157,15 @@ so the first run downloads about 500 MB again; `PATENT_DATA_DIR` can point at an
 5. A Qwen-run agent invocation produces the same checker output as the Claude-run one on a fixed fixture,
    and an agent that needs a denied tool fails with a permission error naming the tool. `manual`: needs a live
    agent run. Tests check why it holds — the checkers read no client or model configuration, so the same
-   fixture gives the same verdict in any client, and the generated policy denies a tool the agent does not list.
+   fixture gives the same verdict in any client, and the generated policy denies a tool the agent does not
+   list, apart from the server's own tools, which are granted as the set read from `mcp_server/tools/`.
 6. HyDE: `HYDE_API_PROVIDER=qwen` with `QWEN_API_KEY` resolves to the qwen provider and DashScope base URL;
    `HYDE_API_PROVIDER=openai` with only `OPENAI_API_KEY` uses OpenAI; `HYDE_STRICT=true` surfaces API failures;
    provider resolution is covered by tests without a live API key.
 7. CI guards pass: package version bumped for installed-code changes, plugin version bumped for plugin-content
-   changes, and the generated trees match the canonical source (`--check`).
+   changes, and the generated trees match the canonical source (`--check`). The version guard matches the version
+   line (`grep -qE '^\+\s*version\s*=\s*"[^"]+"'`), not one literal formatting, so a reformatted
+   `pyproject.toml` still trips it.
 
 `tests/test_acceptance.py` covers criteria 1-7 as far as a test run can observe them; the halves marked
 `manual` need an installed client or a live agent run and are checked by hand.

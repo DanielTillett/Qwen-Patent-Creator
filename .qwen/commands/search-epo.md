@@ -1,6 +1,6 @@
 ---
 description: Search European patents using EPO OPS API and BigQuery (100M+ patents filtered for EP)
-argument-hint: "query [optional: --cpc CODE] [--year-range START-END] [--applicant NAME] [--limit N]"
+argument-hint: "\"query [optional: --cpc CODE] [--year-range START-END] [--applicant NAME] [--limit N]\""
 ---
 
 # EPO Patent Search

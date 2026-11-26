@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-27
+
+### Changed
+- Registering a client rewrites the value of each field it updates instead of re-rendering the whole
+  entry, so comments the user wrote inside their own entry survive. The value span now starts after the
+  whitespace following the colon: starting at the character right after the colon made a string value
+  look like an empty scalar, so it was written twice and the file came out as invalid JSON.
+- OpenCode's user configuration path honours `XDG_CONFIG_HOME`, with `~/.config` as the fallback when
+  it is blank.
+- `build_plugin_targets.py --check` compares the hook files and `.qwen/settings.json` too, reports a
+  stale generated file rather than deleting it, and never overwrites a `settings.json` it does not own;
+  a drift between `hooks/hooks.json` and a hand-edited `settings.json` is reported with the command to
+  fix it. `is_generator_owned()` is stricter, so a hand-written file is not mistaken for a generated one.
+- Frontmatter values that YAML would read as something other than a string are quoted. Qwen Code's
+  command schema requires `argument-hint` to be a string, so a bracketed hint such as `[test-type]`
+  made the whole command file fail validation.
+- The MCP tool names in the generated trees come from the server's own tool definitions rather than a
+  list typed into the generator, so the two trees grant the same 36 tools: Qwen Code names them one by
+  one as `mcp__qwen-patent-creator__<tool>`, OpenCode expresses the same set with one group rule
+  `qwen-patent-creator_*`. A grant is emitted only when the canonical `tools:` allowlist is non-empty, so
+  an agent that inherits its permissions does not get a grant it never asked for.
+- OpenCode's `read` / `ask` rule for credential files matches `*.env*`, so `.env.local` is still asked
+  for rather than read.
+- The CI version guard matches the version line (`grep -qE '^\+\s*version\s*=\s*"[^"]+"'`) instead of one
+  formatting of it, so a reformatted `pyproject.toml` still trips it.
+- `scripts/setup-env.sh` prints each note as well as appending it, because only Claude Code hands a hook
+  an environment file to write to; OpenCode and Qwen Code read what the hook prints.
+- The README documents upgrading from the upstream package (separate environment, `claude mcp remove`,
+  and that the config and data folders do not move by themselves), and `CLAUDE.md` points at `AGENTS.md`
+  instead of keeping a second copy. `AGENTS.md` no longer describes Claude-only log paths, the
+  Claude-only env file, or Claude-only skill activation.
+
 ## [0.4.0] - 2026-11-26
 
 ### Changed

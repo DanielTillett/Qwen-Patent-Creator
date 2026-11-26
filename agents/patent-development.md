@@ -1,7 +1,7 @@
 ---
 name: patent-development
 description: Develop and extend the patent creator MCP server, analyzers and plugin workflows
-tools: read, write, edit, bash, grep, glob
+tools: read, write, edit, bash, grep, glob, skill
 ---
 
 # Patent Development Agent

@@ -31,7 +31,7 @@ jobs:
             echo "No plugin content changed; guard passes."
             exit 0
           fi
-          if git diff "$BASE"...HEAD -- pyproject.toml | grep -q '^+version = '; then
+          if git diff "$BASE"...HEAD -- pyproject.toml | grep -qE '^\+\s*version\s*=\s*"[^"]+"'; then
             echo "Plugin content changed and the version was bumped; guard passes."
             exit 0
           fi

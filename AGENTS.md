@@ -381,27 +381,25 @@ claude mcp list
 The files each client reads are `~/.config/opencode/opencode.jsonc` (or the project's
 `opencode.jsonc` for `--scope project`), `~/.qwen/settings.json`, and `~/.claude.json`.
 
-**Claude Code MCP logs:**
+**Client config files the server writes** (for manual fixes):
 ```
 # Linux/macOS
-~/.config/claude/logs/mcp.log
+~/.config/opencode/opencode.jsonc     # OpenCode, --scope user (XDG_CONFIG_HOME wins)
+~/.qwen/settings.json                 # Qwen Code
+~/.claude.json                        # Claude Code, read for verification
 
-# Windows
-%APPDATA%\claude\logs\mcp.log
+# Windows, same paths under the user profile
+%USERPROFILE%\.config\opencode\opencode.jsonc
+%USERPROFILE%\.qwen\settings.json
 ```
 
-**Run Claude Code in debug mode:**
+**MCP logs:** the client writes its own log; OpenCode and Qwen Code do not share Claude's
+`~/.config/claude/logs/mcp.log`. Check the client's own log location, or run the server directly
+and read its stderr.
+
+**To see what the server itself prints**, run it directly and read its stderr:
 ```bash
-claude --debug
-```
-
-**MCP config file location** (for manual fixes):
-```
-# Linux/macOS
-~/.config/claude/mcp_config.json
-
-# Windows
-%APPDATA%\claude\mcp_config.json
+python3 mcp_server/server.py
 ```
 
 ---
@@ -521,7 +519,8 @@ results = search.search_by_keywords("neural networks", limit=10)
 
 ## Getting Help
 
-For detailed guidance on specific tasks, Claude will automatically activate the appropriate skill:
+For detailed guidance on specific tasks, the agent activates the appropriate skill automatically when the client
+supports skills (OpenCode and Qwen Code do; Claude Code gets the tools only):
 
 - **Installation issues?** -> setup-assistant skill
 - **Want to add a feature?** -> development-assistant skill
@@ -535,7 +534,8 @@ Each skill contains comprehensive reference documentation and step-by-step workf
 
 ## Best Practices
 
-1. **Always activate venv for manual operations** (Claude Code handles automatically)
+1. **Always activate venv for manual operations** (the registered MCP command already points at the venv's
+    interpreter, so this only matters for commands you type in a terminal)
 2. **Use `qwen-patent-creator` CLI for system operations** (health, rebuild, verify)
 3. **Test with `qwen-patent-creator health` after changes**
 4. **Add performance monitoring to expensive operations** (`@track_performance("operation_name")`)
@@ -546,7 +546,8 @@ Each skill contains comprehensive reference documentation and step-by-step workf
 9. **Use structured logging** with contextual fields
 10. **Follow existing analyzer patterns** when adding new analyzers
 11. **Return JSON-serializable types** from MCP tools (dict, list, primitives)
-12. **Write detailed docstrings** for MCP tools (Claude sees them)
+12. **Write detailed docstrings** for MCP tools (the client shows them to the model)
 13. **Use `OperationTimer` for sub-operation profiling**
-14. **Check `settings.has_bigquery_configured()` before using BigQuery**
+14. **Check BigQuery is configured before using it** (application default credentials); the search tool reports an
+    install/sign-in error rather than failing silently when they are missing
 15. **Always use forward slashes in paths** for MCP configuration

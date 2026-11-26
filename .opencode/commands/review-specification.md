@@ -1,6 +1,6 @@
 ---
 description: Review patent specification for 35 USC 112(a) compliance (written description and enablement heuristics; best mode requires manual review)
-argument-hint: "[optional: written description | enablement | best mode] specification-text claims-text"
+argument-hint: "\"[optional: written description | enablement | best mode] specification-text claims-text\""
 ---
 
 # Specification Review

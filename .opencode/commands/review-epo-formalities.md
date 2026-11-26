@@ -1,6 +1,6 @@
 ---
 description: Check patent application formalities for EPO compliance (Rules 42-49 EPC, EPO Guidelines Part A)
-argument-hint: "[optional: description | claims | abstract | drawings | all] application-text"
+argument-hint: "\"[optional: description | claims | abstract | drawings | all] application-text\""
 ---
 
 # EPO Formalities Check

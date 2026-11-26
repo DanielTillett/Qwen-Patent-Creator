@@ -14,6 +14,7 @@ user's own formatting survive, so a JSONC file is still valid after the write.
 """
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -46,6 +47,12 @@ def _cli_available(command: str) -> bool:
         return False
 
 
+def _config_home() -> Path:
+    """OpenCode reads its user configuration from the XDG location, so `XDG_CONFIG_HOME` wins."""
+    value = os.environ.get("XDG_CONFIG_HOME", "").strip()
+    return Path(value) if value else Path.home() / ".config"
+
+
 def config_path(client: str, scope: str, project_root: Path) -> Path:
     """Where this client's MCP configuration lives for this scope.
 
@@ -59,7 +66,7 @@ def config_path(client: str, scope: str, project_root: Path) -> Path:
         base = project_root if scope == "project" else Path.home()
         names = [".claude.json" if scope == "user" else ".mcp.json"]
     elif client == "opencode":
-        base = project_root if scope == "project" else Path.home() / ".config" / "opencode"
+        base = project_root if scope == "project" else _config_home() / "opencode"
         names = ["opencode.jsonc", "opencode.json"]
     elif client == "qwen-code":
         base = project_root / ".qwen" if scope == "project" else Path.home() / ".qwen"
@@ -205,7 +212,14 @@ def register(client: str, scope: str, python_path: Path, server_script: Path,
     # only the command and args it uses are changed. The value starts on the same
     # line as its key, so the continuation lines are indented from there.
     merged = _merge_entry(fragment, entry, shape_keys(client))
-    if "\n" in text[container[0] + 1:container[1]]:
+    if any(kinds[index] == "comment" for index in range(value[0], value[1])):
+        # The user wrote comments inside this entry. Re-rendering the whole value would drop
+        # them, so substitute only the fields being updated and leave the comments where they
+        # were written.
+        block = _rewrite_object_values(text, kinds, value, {
+            key: merged[key] for key in shape_keys(client) if key in merged
+        })
+    elif "\n" in text[container[0] + 1:container[1]]:
         key_indent = _base_indent(text, value[0])
         lines = json.dumps(merged, indent=2).splitlines()
         block = lines[0]
@@ -240,6 +254,55 @@ def _merge_entry(fragment: str, entry: dict, keys: tuple) -> dict:
     for key, value in entry.items():
         merged.setdefault(key, value)
     return merged
+
+
+def _rewrite_object_values(text: str, kinds: list, span: tuple, updates: dict) -> str:
+    """Replace the value of named keys inside one object without losing the comments in it.
+
+    The object is copied member by member, so a comment the user wrote inside it stays where it
+    was; only the value of a key being updated is rewritten. A key the object does not have yet
+    is added before the closing brace, after any real content, because a comment cannot end a
+    member and the separator has to go between members, not between a member and a comment.
+    """
+    start, end = span
+    pieces = []
+    seen = set()
+    indent = _base_indent(text, start)
+    index = start
+    while index < end:
+        if kinds[index] == "string":
+            string = _string_span(text, index)
+            colon = _value_start(text, kinds, string[1])
+            if text[colon:colon + 1] == ":":
+                key = json.loads(text[index:string[1]])
+                if key in updates and key not in seen:
+                    seen.add(key)
+                    pieces.append(text[index:colon + 1])
+                    # The value begins after the whitespace between the colon and it, so the span
+                    # has to start there; from the character right after the colon a string value
+                    # looks like an empty scalar and gets written twice.
+                    value_start = _value_start(text, kinds, colon + 1)
+                    value = _value_span(text, kinds, value_start)
+                    pieces.append(text[colon + 1:value_start] or " ")
+                    pieces.append(json.dumps(updates[key]))
+                    index = value[1] if value else value_start
+                    continue
+            pieces.append(text[index:string[1]])
+            index = string[1]
+            continue
+        if index == end - 1:
+            missing = [key for key in updates if key not in seen]
+            if missing:
+                body = "".join(f",\n{indent}  {json.dumps(key)}: {json.dumps(updates[key])}" for key in missing)
+                last, _ = _last_content(text, kinds, start, end)
+                if last in ("", "{"):
+                    body = body[1:]  # the first member needs no separator
+                pieces.append(body)
+            pieces.append(text[index])
+            break
+        pieces.append(text[index])
+        index += 1
+    return "".join(pieces)
 
 
 def _insert_member(text: str, path: Path, kinds: list, container: tuple, key, value):
