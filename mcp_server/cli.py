@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Command-line interface for Claude Patent Creator
+Command-line interface for Qwen Patent Creator
 Provides easy setup and management commands
 """
 
@@ -24,13 +24,18 @@ import subprocess
 import sys
 from pathlib import Path
 
-# Ensure bare inter-module imports work when run via the `patent-creator`
+# Ensure bare inter-module imports work when run via the `qwen-patent-creator`
 # entry point (mcp_server.cli:main).  Python only auto-adds the script's
 # directory to sys.path for direct execution, not for package entry points.
 # See: https://github.com/RobThePCGuy/Claude-Patent-Creator/issues/2
 _pkg_dir = str(Path(__file__).parent)
 if _pkg_dir not in sys.path:
     sys.path.insert(0, _pkg_dir)
+
+try:
+    import registration
+except ImportError:
+    from mcp_server import registration
 
 # Saved settings must reach the environment before anything reads it: data
 # paths (PATENT_DATA_DIR) are computed at import and commands like
@@ -124,7 +129,7 @@ except (ImportError, SystemExit) as exc:  # SystemExit: server.py exits if mcp i
     download_subsequent_publications = extract_mpep_pdfs = None
 
 # EPO/PCT law corpus downloaders (lightweight: requests only). Guarded the
-# same way so `patent-creator --help` works in a bare environment.
+# same way so `qwen-patent-creator --help` works in a bare environment.
 try:
     from epo_downloaders import (
         check_epo_pct_sources,
@@ -156,7 +161,7 @@ def _render(message: str) -> str:
 
 
 def _cli() -> str:
-    """The exact patent-creator command for this install (see cli_command)."""
+    """The exact qwen-patent-creator command for this install (see cli_command)."""
     from cli_command import installed_cli
 
     return installed_cli()
@@ -297,7 +302,7 @@ def _auto_detect_bigquery():
         print("\n[INFO] gcloud CLI detected but no application-default credentials", file=sys.stderr)
         print("  To enable BigQuery patent search (100M+ patents, free):", file=sys.stderr)
         print("  In a terminal, run: gcloud auth application-default login", file=sys.stderr)
-        print("  (inside Claude Code you can type: ! gcloud auth application-default login)", file=sys.stderr)
+        print("  (in Claude Code type: ! gcloud auth application-default login; in OpenCode or Qwen Code run the same command in the shell)", file=sys.stderr)
     else:
         # No gcloud at all — this is fine, BigQuery is optional
         print("\n[INFO] BigQuery patent search not configured (optional)", file=sys.stderr)
@@ -328,11 +333,11 @@ def _verify_bigquery_setup():
 
 
 def mcp_handshake(python_cmd: str, server_script: str, timeout: float = 180.0) -> tuple[bool, str]:
-    """Start the server exactly as Claude Code will and complete an MCP handshake.
+    """Start the server exactly as an MCP client will and complete an MCP handshake.
 
-    A matching path in ~/.claude.json proves nothing: the registered Python can
+    A matching path in a client config proves nothing: the registered Python can
     exist and still be unable to import mcp. Only a real initialize round trip
-    shows Claude will connect. Returns (ok, detail) where detail is the server
+    shows the client will connect. Returns (ok, detail) where detail is the server
     name on success or the tail of its stderr on failure.
     """
     import tempfile
@@ -345,7 +350,7 @@ def mcp_handshake(python_cmd: str, server_script: str, timeout: float = 180.0) -
         "params": {
             "protocolVersion": "2025-06-18",
             "capabilities": {},
-            "clientInfo": {"name": "patent-creator-verify", "version": "1"},
+            "clientInfo": {"name": "qwen-patent-creator-verify", "version": "1"},
         },
     }
     err_file = tempfile.TemporaryFile(mode="w+", encoding="utf-8", errors="replace")  # noqa: SIM115 - closed on every path below
@@ -403,34 +408,90 @@ def mcp_handshake(python_cmd: str, server_script: str, timeout: float = 180.0) -
     return False, tail or f"no answer within {int(timeout)} s"
 
 
-def _report_handshake(python_str: str, server_str: str) -> bool:
-    print("\nTesting the connection the way Claude Code will...", file=sys.stderr)
+def _report_handshake(python_str: str, server_str: str, client: str = "the client") -> bool:
+    print(f"\nTesting the connection the way {client} will...", file=sys.stderr)
     ok, detail = mcp_handshake(python_str, server_str)
     if ok:
         print(f"  [OK] Server started and answered ({detail})", file=sys.stderr)
         return True
-    print("  [X] Claude Code will NOT be able to connect: the server did not answer.", file=sys.stderr)
+    print(f"  [X] {client} will NOT be able to connect: the server did not answer.", file=sys.stderr)
     for line in detail.splitlines():
         print(f"      {line}", file=sys.stderr)
     return False
 
 
-def configure_mcp_server():
-    """
-    Register the MCP server with Claude Code using 'claude mcp add' command
-    """
-    import platform
+CLIENT_LABELS = {
+    "claude": "Claude Code",
+    "opencode": "OpenCode",
+    "qwen-code": "Qwen Code CLI",
+    "none": "no client",
+}
 
-    # Get correct paths - server.py is in project_root/mcp_server/, not in MPEP_DIR (pdfs/)
-    project_root = Path(__file__).parent.parent.resolve()  # Go up from mcp_server/ to project root
-    server_script = (project_root / "mcp_server" / "server.py").resolve()
+# What each client's own tools are for confirming the server is connected.
+CLIENT_CHECK_COMMAND = {
+    "claude": "claude mcp list",
+    "opencode": "opencode mcp list",
+    "qwen-code": "qwen mcp list",
+    "none": "the client's MCP list",
+}
+
+
+def install_root() -> Path:
+    """Where the package (and therefore server.py) is installed."""
+    return Path(__file__).parent.parent.resolve()
+
+
+def project_root(args=None) -> Path:
+    """The project a `--scope project` registration writes to.
+
+    This is the working directory, not the package directory: for an installed
+    package `Path(__file__).parent.parent` is site-packages, and a project-scoped
+    config belongs beside the checkout the client is run from. `--project-dir`
+    overrides it for tests and non-interactive runs.
+    """
+    explicit = getattr(args, "project_dir", None) if args is not None else None
+    return Path(explicit).resolve() if explicit else Path.cwd()
+
+
+def _claude_manual_command(scope: str, project: Path, python_str: str, server_str: str) -> str:
+    """The manual `claude mcp add` line, in the directory it has to run from.
+
+    `claude mcp add --scope project` writes .mcp.json in the directory Claude Code
+    runs in, so printing the command alone is not enough for a project scope.
+    """
+    command = (
+        f'claude mcp add --transport stdio {registration.SERVER_NAME} --scope {scope} '
+        f'-- "{python_str}" "{server_str}"'
+    )
+    return f'cd "{project}" && {command}' if scope == "project" else command
+
+
+def configure_mcp_server(client: str = "auto", scope: str = "user", project: Path = None) -> bool:
+    """Register the MCP server with the client that is actually being used.
+
+    Claude Code goes through `claude mcp add`; the file-configured clients get
+    their own config merged (see registration). `--client none` means there is
+    nothing to register, which is a complete setup, not a failure.
+    """
+    client = registration.resolve_client(client)
+
+    # server.py sits next to the installed package, which is not where a
+    # project-scoped client config belongs.
+    server_script = (install_root() / "mcp_server" / "server.py").resolve()
+    project = Path(project).resolve() if project else Path.cwd()
     # Keep the venv symlink: resolving it registers the base interpreter,
-    # which cannot import mcp and makes Claude fail to connect.
+    # which cannot import mcp and makes the client fail to connect.
     python_path = Path(sys.executable).absolute()
 
     print("\n" + "=" * 60, file=sys.stderr)
-    print("Registering MCP Server with Claude Code", file=sys.stderr)
+    print(f"Registering the MCP server with {CLIENT_LABELS[client]}", file=sys.stderr)
     print("=" * 60, file=sys.stderr)
+
+    if client == "none":
+        print("\n[SKIP] Nothing to register (--client none): no client config was written.", file=sys.stderr)
+        print("  The server still works from any MCP client that registers it itself.", file=sys.stderr)
+        print("  Register it later with: " + _render(f"{_cli()} setup --client opencode"), file=sys.stderr)
+        return True
 
     # Verify paths exist
     if not python_path.exists():
@@ -440,6 +501,15 @@ def configure_mcp_server():
     if not server_script.exists():
         print(f"\n[X] Server script not found: {server_script}", file=sys.stderr)
         return False
+
+    if client != "claude":
+        ok, detail = registration.register(client, scope, python_path, server_script, project)
+        print(f"\n[{'OK' if ok else 'X'}] {detail}", file=sys.stderr)
+        if not ok:
+            return False
+        return _report_handshake(str(python_path), str(server_script), CLIENT_LABELS[client])
+
+    import platform
 
     # On Windows, Claude CLI requires git-bash - set environment variable
     if platform.system() == "Windows":
@@ -454,7 +524,7 @@ def configure_mcp_server():
     # Check if claude command exists
     try:
         result = subprocess.run(
-            ["claude", "mcp", "list"], capture_output=True, text=True, timeout=10
+            ["claude", "mcp", "list"], capture_output=True, text=True, timeout=10, cwd=str(project)
         )
         claude_available = result.returncode == 0
     except (subprocess.TimeoutExpired, FileNotFoundError):
@@ -470,17 +540,22 @@ def configure_mcp_server():
             python_str = str(python_path).replace("\\", "/")
             server_str = str(server_script).replace("\\", "/")
         print(
-            f'\n  claude mcp add --transport stdio claude-patent-creator --scope user -- "{python_str}" "{server_str}"',
+            f"\n  {_claude_manual_command(scope, project, python_str, server_str)}",
             file=sys.stderr,
         )
         return False
 
-    # Remove existing registration if present
+    # Remove existing registration if present. The scope has to be named: without it
+    # `claude mcp remove` only clears the user scope, so a `--scope project` setup
+    # leaves the project entry in place and the add below reports a duplicate.
+    # `claude mcp add --scope project` writes .mcp.json in its working directory, so
+    # the run is anchored to --project-dir, the same project the file clients use.
     with contextlib.suppress(Exception):
         subprocess.run(
-            ["claude", "mcp", "remove", "claude-patent-creator"],
+            ["claude", "mcp", "remove", registration.SERVER_NAME, "--scope", scope],
             capture_output=True,
             timeout=10,
+            cwd=str(project),
         )
 
     # Register the MCP server with correct format
@@ -498,9 +573,9 @@ def configure_mcp_server():
             "add",
             "--transport",
             "stdio",
-            "claude-patent-creator",
+            "qwen-patent-creator",
             "--scope",
-            "user",
+            scope,
             "--",
             python_str,
             server_str,
@@ -510,7 +585,7 @@ def configure_mcp_server():
 
         if result.returncode == 0:
             print("\n[OK] MCP server registered with Claude Code", file=sys.stderr)
-            print("  Name: claude-patent-creator", file=sys.stderr)
+            print("  Name: qwen-patent-creator", file=sys.stderr)
             print(f"  Python: {python_str}", file=sys.stderr)
             print(f"  Script: {server_str}", file=sys.stderr)
             if not _report_handshake(python_str, server_str):
@@ -522,7 +597,7 @@ def configure_mcp_server():
             print(f"\n[X] Failed to register MCP server: {result.stderr}", file=sys.stderr)
             print("\nManual registration command:", file=sys.stderr)
             print(
-                f'  claude mcp add --transport stdio claude-patent-creator --scope user -- "{python_str}" "{server_str}"',
+                f"  {_claude_manual_command(scope, project, python_str, server_str)}",
                 file=sys.stderr,
             )
             return False
@@ -536,7 +611,7 @@ def configure_mcp_server():
             python_str = str(python_path).replace("\\", "/")
             server_str = str(server_script).replace("\\", "/")
         print(
-            f'  claude mcp add --transport stdio claude-patent-creator --scope user -- "{python_str}" "{server_str}"',
+            f"  {_claude_manual_command(scope, project, python_str, server_str)}",
             file=sys.stderr,
         )
         return False
@@ -701,7 +776,7 @@ def _setup_graphviz(ensure_fn=None, consent=None) -> bool:
             print(
                 "  [SKIP] Graphviz is not installed. Only the diagram tools need it."
                 f"\n         To add it later, run: {hint}"
-                "\n         then restart Claude Code.",
+                "\n         then restart your MCP client.",
                 file=sys.stderr,
             )
             return False
@@ -783,7 +858,7 @@ def setup_command(args):
         os.environ["PATENT_MPEP_USE_HYDE"] = "false"
 
     print("\n" + "=" * 60, file=sys.stderr)
-    print("Claude Patent Creator - Automatic Setup", file=sys.stderr)
+    print("Qwen Patent Creator - Automatic Setup", file=sys.stderr)
     print("=" * 60, file=sys.stderr)
 
     _normalize_interactivity(args)
@@ -798,12 +873,29 @@ def setup_command(args):
             "\n  [INFO] Restarting setup with fresh Python interpreter to load new PyTorch...\n",
             file=sys.stderr,
         )
-        # Re-exec this script in a subprocess to get fresh Python with new PyTorch
+        # Re-exec this script in a subprocess to get fresh Python with new PyTorch.
+        # The restarted process has to do what the user actually asked for, so the client,
+        # scope and project are carried over: a `setup --client opencode --scope project`
+        # that installs PyTorch would otherwise register the default user scope on the second
+        # pass and never write the project file it was pointed at.
+        argv = [sys.executable, "-m", "mcp_server.cli", "setup"]
+        for flag, value in (
+            ("--rebuild", args.rebuild),
+            ("--no-hyde", args.no_hyde),
+            ("--non-interactive", getattr(args, "non_interactive", False)),
+            ("--client", getattr(args, "client", None)),
+            ("--scope", getattr(args, "scope", None)),
+        ):
+            if not value:
+                continue
+            argv.append(flag)
+            if value is not True:
+                argv.append(str(value))
+        if getattr(args, "project_dir", None):
+            argv.extend(["--project-dir", str(args.project_dir)])
+
         result = subprocess.run(
-            [sys.executable, "-m", "mcp_server.cli", "setup"]
-            + (["--rebuild"] if args.rebuild else [])
-            + (["--no-hyde"] if args.no_hyde else [])
-            + (["--non-interactive"] if getattr(args, "non_interactive", False) else []),
+            argv,
             env={**os.environ, "_PYTORCH_ALREADY_INSTALLED": "1"},
         )
         return result.returncode
@@ -953,15 +1045,22 @@ def setup_command(args):
     # Verify BigQuery actually works (catches missing project ID)
     _verify_bigquery_setup()
 
-    # Configure MCP server
-    mcp_configured = configure_mcp_server()
+    # Configure the MCP server for the client being used, unless the user asked
+    # for no registration at all.
+    client = registration.resolve_client(getattr(args, "client", "auto"))
+    scope = getattr(args, "scope", "user")
+    # A project-scoped registration belongs beside the checkout the client is run
+    # from, so the same --project-dir applies here as it does to setup.
+    mcp_configured = configure_mcp_server(client, scope, project_root(args))
 
     # Final status
     print("\n" + "=" * 60, file=sys.stderr)
-    print(
-        "Setup Complete!" if mcp_configured else "Setup finished, but Claude Code is NOT connected yet",
-        file=sys.stderr,
-    )
+    if mcp_configured:
+        print("Setup Complete!", file=sys.stderr)
+    elif client == "none":
+        print("Setup Complete! (no client was registered, as asked)", file=sys.stderr)
+    else:
+        print(f"Setup finished, but {CLIENT_LABELS[client]} is NOT connected yet", file=sys.stderr)
     print("=" * 60, file=sys.stderr)
 
     sources_status = check_all_sources()
@@ -984,30 +1083,33 @@ def setup_command(args):
         file=sys.stderr,
     )
 
-    if mcp_configured:
-        print("\nClaude Code Integration:", file=sys.stderr)
-        print("  [OK] MCP server registered (user scope)", file=sys.stderr)
+    if mcp_configured and client != "none":
+        print(f"\n{CLIENT_LABELS[client]} integration:", file=sys.stderr)
+        print(f"  [OK] MCP server registered ({scope} scope)", file=sys.stderr)
         print("  [OK] Available from any directory", file=sys.stderr)
+    elif mcp_configured:
+        print("\nClient integration:", file=sys.stderr)
+        print("  [--] Nothing was registered (--client none)", file=sys.stderr)
+        print("  [OK] The server still works from any MCP client that registers it", file=sys.stderr)
     else:
-        print("\n[WARNING] MCP server auto-registration failed", file=sys.stderr)
-        print("  See manual registration command above", file=sys.stderr)
+        print("\n[WARNING] MCP server registration failed", file=sys.stderr)
+        print("  See the registration output above", file=sys.stderr)
 
-    # The skills (incl. the patent-application-creator campaign workflow)
-    # ship as a Claude Code plugin, NOT inside this Python package — without
-    # these two commands a user gets the tools but never the campaign.
-    print("\nClaude Code skills (patent campaign workflow):", file=sys.stderr)
-    print(
-        "  claude plugin marketplace add RobThePCGuy/Claude-Patent-Creator",
-        file=sys.stderr,
-    )
-    print(
-        "  claude plugin install claude-patent-creator-standalone@claude-patent-creator",
-        file=sys.stderr,
-    )
-    print(
-        "  (re-run the install command after upgrades to refresh the skills)",
-        file=sys.stderr,
-    )
+    # The skills, agents and commands (including the patent-application-creator
+    # campaign workflow) are not part of the Python package: installing the
+    # package alone gives the tools but never the campaign. How they are picked
+    # up depends on the client.
+    print("\nSkills and agents for the patent campaign workflow:", file=sys.stderr)
+    if client == "claude":
+        print("  The fork ships no Claude plugin layer, so Claude Code gets the MCP tools only.", file=sys.stderr)
+        print("  Use OpenCode or Qwen Code for the guided workflows, or keep the upstream plugin.", file=sys.stderr)
+    else:
+        print("  Run the client in this checkout so it discovers the plugin files:", file=sys.stderr)
+        print("    skills/            the shared prompts every client can load", file=sys.stderr)
+        print("    .opencode/agents, .opencode/commands, .opencode/skills  -> OpenCode", file=sys.stderr)
+        print("    .qwen/agents, .qwen/commands, .qwen/skills              -> Qwen Code CLI", file=sys.stderr)
+        print("    .qwen/settings.json                                      -> the Qwen Code hooks", file=sys.stderr)
+        print("  Or copy the client's directory into its global settings directory.", file=sys.stderr)
 
     # Check BigQuery status for final message
     bq_works = False
@@ -1028,7 +1130,10 @@ def setup_command(args):
         )
         return 1
 
-    print("\nReady to use! Restart Claude Code, then try:", file=sys.stderr)
+    if client == "none":
+        print("\nReady to use from any MCP client. Register the server, then try:", file=sys.stderr)
+    else:
+        print(f"\nReady to use! Restart {CLIENT_LABELS[client]}, then try:", file=sys.stderr)
     print('  "Search MPEP for claim definiteness requirements"', file=sys.stderr)
     print('  "Review my patent claims for 35 USC 112(b) compliance"', file=sys.stderr)
     if bq_works:
@@ -1136,7 +1241,7 @@ def status_command(args):
     pdf_count = check_mpep_pdfs()
     index_exists = (INDEX_DIR / "mpep_index.faiss").exists()
 
-    print("\nClaude Patent Creator Status", file=sys.stderr)
+    print("\nQwen Patent Creator Status", file=sys.stderr)
     print("=" * 40, file=sys.stderr)
 
     # GPU Status
@@ -1201,26 +1306,25 @@ def status_command(args):
 
 
 def verify_config_command(args):
-    """Verify Claude Code MCP configuration"""
+    """Verify the MCP configuration the selected client actually reads."""
+    client = registration.resolve_client(getattr(args, "client", "auto"))
+    scope = getattr(args, "scope", "user")
+    label = CLIENT_LABELS[client]
+
     print("\n" + "=" * 70, file=sys.stderr)
-    print("Claude Code MCP Configuration Verification", file=sys.stderr)
+    print(f"{label} MCP Configuration Verification", file=sys.stderr)
     print("=" * 70, file=sys.stderr)
 
-    # Determine config file location
-    home_dir = Path.home()
-    config_path = home_dir / ".claude.json"
-
-    # Get expected paths
-    project_root = Path(__file__).parent.parent.resolve()
+    # server.py belongs to the installed package; the config file belongs to the
+    # project the client is run from (or --project-dir). They are the same only in
+    # a checkout, which is why the old code used one root for both.
     expected_python = Path(sys.executable).absolute()
-    expected_server = (project_root / "mcp_server" / "server.py").resolve()
+    expected_server = (install_root() / "mcp_server" / "server.py").resolve()
 
     print("\nExpected Configuration:", file=sys.stderr)
     print(f"  Python: {expected_python}", file=sys.stderr)
     print(f"  Server: {expected_server}", file=sys.stderr)
-    print(f"  Config: {config_path}", file=sys.stderr)
 
-    # Check if paths exist
     print("\nPath Verification:", file=sys.stderr)
     if expected_python.exists():
         print("  [OK] Python executable found", file=sys.stderr)
@@ -1232,96 +1336,94 @@ def verify_config_command(args):
     else:
         print(f"  [X] Server script NOT found: {expected_server}", file=sys.stderr)
 
-    # Check Claude config
-    print("\nClaude Configuration:", file=sys.stderr)
+    print(f"\n{label} Configuration:", file=sys.stderr)
+    if client == "none":
+        print("  [--] Nothing to verify: --client none wrote no configuration.", file=sys.stderr)
+        print("  The server is installed and works with any client that registers it.", file=sys.stderr)
+        print(f"  Register it with: {_render(f'{_cli()} setup --client opencode')}", file=sys.stderr)
+        return 0
+
+    config_path = registration.config_path(client, scope, project_root(args))
+    print(f"  Config: {config_path} ({scope} scope)", file=sys.stderr)
     if not config_path.exists():
         print(f"  [X] Config file not found: {config_path}", file=sys.stderr)
-        print(f"\n  Run '{_cli()} setup' to create it", file=sys.stderr)
+        print(f"\n  Run '{_cli()} setup --client {client} --scope {scope}' to create it", file=sys.stderr)
         return 1
 
     try:
-        with config_path.open(encoding="utf-8") as f:
-            config = json.load(f)
-
-        if "mcpServers" not in config:
-            print("  [X] No 'mcpServers' section found", file=sys.stderr)
-            return 1
-
-        if "claude-patent-creator" not in config["mcpServers"]:
-            print("  [X] 'claude-patent-creator' server not registered", file=sys.stderr)
-            print(f"\n  Run: {_cli()} setup", file=sys.stderr)
-            return 1
-
-        server_config = config["mcpServers"]["claude-patent-creator"]
-        actual_python = server_config.get("command", "")
-        actual_args = server_config.get("args", [])
-        actual_server = actual_args[0] if actual_args else ""
-
-        print("  [OK] Configuration found", file=sys.stderr)
-        print("\nActual Configuration:", file=sys.stderr)
-        print(f"  Python: {actual_python}", file=sys.stderr)
-        print(f"  Server: {actual_server}", file=sys.stderr)
-
-        # Normalize paths for comparison (handle forward/backslash differences)
-        def normalize_path(p):
-            return str(Path(p).resolve()).lower() if p else ""
-
-        def normalize_interpreter(p):
-            # Never resolve an interpreter: a venv python and its base
-            # interpreter resolve to the same file but behave differently.
-            return str(Path(p).absolute()).replace("\\", "/").lower() if p else ""
-
-        expected_python_norm = normalize_interpreter(expected_python)
-        expected_server_norm = normalize_path(expected_server)
-        actual_python_norm = normalize_interpreter(actual_python)
-        actual_server_norm = normalize_path(actual_server)
-
-        print("\nConfiguration Status:", file=sys.stderr)
-
-        python_match = expected_python_norm == actual_python_norm
-        server_match = expected_server_norm == actual_server_norm
-
-        if python_match:
-            print("  [OK] Python path is correct", file=sys.stderr)
-        else:
-            print("  [X] Python path mismatch!", file=sys.stderr)
-            print(f"    Expected: {expected_python}", file=sys.stderr)
-            print(f"    Actual:   {actual_python}", file=sys.stderr)
-
-        if server_match:
-            print("  [OK] Server path is correct", file=sys.stderr)
-        else:
-            print("  [X] Server path mismatch!", file=sys.stderr)
-            print(f"    Expected: {expected_server}", file=sys.stderr)
-            print(f"    Actual:   {actual_server}", file=sys.stderr)
-
-        if python_match and server_match and not _report_handshake(actual_python, actual_server):
-            print(f"\n[X] The registered server does not start. Re-run: {_cli()} setup", file=sys.stderr)
-            return 1
-
-        if python_match and server_match:
-            print("\n[OK] Configuration is correct!", file=sys.stderr)
-            print("\nIf the server still fails:", file=sys.stderr)
-            print("  1. Restart Claude Code", file=sys.stderr)
-            print("  2. Check logs in Claude Code", file=sys.stderr)
-            print("  3. Try: claude mcp list", file=sys.stderr)
-            return 0
-        else:
-            print("\n[X] Configuration needs to be fixed!", file=sys.stderr)
-            print("\nTo fix:", file=sys.stderr)
-            print(f"  Option 1: Run '{_cli()} setup' to re-register", file=sys.stderr)
-            print(f"  Option 2: Manually edit {config_path}", file=sys.stderr)
-            print("\nCorrect values:", file=sys.stderr)
-            print(f'  "command": "{expected_python.as_posix()}"', file=sys.stderr)
-            print(f'  "args": ["{expected_server.as_posix()}"]', file=sys.stderr)
-            return 1
-
-    except json.JSONDecodeError as e:
-        print(f"  [X] Invalid JSON in config file: {e}", file=sys.stderr)
+        entry = registration.read_entry(config_path, client)
+    except ValueError as exc:
+        print(f"  [X] Invalid JSON in config file: {exc}", file=sys.stderr)
         return 1
-    except Exception as e:
-        print(f"  [X] Error reading config: {e}", file=sys.stderr)
+
+    if entry is None:
+        section = ".".join(registration.section_key(client))
+        print(f"  [X] No '{registration.SERVER_NAME}' entry under '{section}' in {config_path}", file=sys.stderr)
+        print(f"\n  Run: {_cli()} setup --client {client} --scope {scope}", file=sys.stderr)
         return 1
+
+    actual_python, actual_args = registration.command_and_args(entry)
+    actual_server = actual_args[0] if actual_args else ""
+
+    print("  [OK] Configuration found", file=sys.stderr)
+    print("\nActual Configuration:", file=sys.stderr)
+    print(f"  Python: {actual_python}", file=sys.stderr)
+    print(f"  Server: {actual_server}", file=sys.stderr)
+
+    # Normalize paths for comparison (handle forward/backslash differences)
+    def normalize_path(p):
+        return str(Path(p).resolve()).lower() if p else ""
+
+    def normalize_interpreter(p):
+        # Never resolve an interpreter: a venv python and its base
+        # interpreter resolve to the same file but behave differently.
+        return str(Path(p).absolute()).replace("\\", "/").lower() if p else ""
+
+    expected_python_norm = normalize_interpreter(expected_python)
+    expected_server_norm = normalize_path(expected_server)
+    actual_python_norm = normalize_interpreter(actual_python)
+    actual_server_norm = normalize_path(actual_server)
+
+    print("\nConfiguration Status:", file=sys.stderr)
+
+    python_match = expected_python_norm == actual_python_norm
+    server_match = expected_server_norm == actual_server_norm
+
+    if python_match:
+        print("  [OK] Python path is correct", file=sys.stderr)
+    else:
+        print("  [X] Python path mismatch!", file=sys.stderr)
+        print(f"    Expected: {expected_python}", file=sys.stderr)
+        print(f"    Actual:   {actual_python}", file=sys.stderr)
+
+    if server_match:
+        print("  [OK] Server path is correct", file=sys.stderr)
+    else:
+        print("  [X] Server path mismatch!", file=sys.stderr)
+        print(f"    Expected: {expected_server}", file=sys.stderr)
+        print(f"    Actual:   {actual_server}", file=sys.stderr)
+
+    if not (python_match and server_match):
+        print("\n[X] Configuration needs to be fixed!", file=sys.stderr)
+        print("\nTo fix:", file=sys.stderr)
+        print(f"  Option 1: Run '{_cli()} setup --client {client} --scope {scope}' to re-register", file=sys.stderr)
+        print(f"  Option 2: Manually edit {config_path}", file=sys.stderr)
+        print("\nCorrect values:", file=sys.stderr)
+        shape = json.dumps(registration.server_entry(client, expected_python, expected_server), indent=2)
+        for line in shape.splitlines():
+            print(f"  {line}", file=sys.stderr)
+        return 1
+
+    if not _report_handshake(actual_python, actual_server, label):
+        print(f"\n[X] The registered server does not start. Re-run: {_cli()} setup --client {client}", file=sys.stderr)
+        return 1
+
+    print("\n[OK] Configuration is correct!", file=sys.stderr)
+    print("\nIf the server still fails:", file=sys.stderr)
+    print(f"  1. Restart {label}", file=sys.stderr)
+    print(f"  2. Check logs in {label}", file=sys.stderr)
+    print(f"  3. Try: {CLIENT_CHECK_COMMAND[client]}", file=sys.stderr)
+    return 0
 
 
 def check_bigquery_command(args):
@@ -1554,31 +1656,34 @@ def _own_version(this_file: str) -> str:
     return module.load_version(this_file)
 
 
-def main():
+def build_parser() -> argparse.ArgumentParser:
     """
-    Main CLI entry point
+    Argument parser for the CLI.
+
+    Kept separate from main() so the argv the setup subprocess re-execs itself with can be
+    checked against the same parser that reads it (see tests/test_setup_restart.py).
     """
     parser = argparse.ArgumentParser(
-        description="Claude Patent Creator - Examiner-level patent creation",
+        description="Qwen Patent Creator - Examiner-level patent creation",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=_render("""
 Examples:
-  patent-creator setup                    # Setup MPEP/USC/CFR sources
-  patent-creator status                   # Show MPEP installation status
-  patent-creator health                   # System health check
-  patent-creator verify-config            # Verify Claude Code configuration
-  patent-creator serve                    # Run the MCP server
+  qwen-patent-creator setup                    # Setup MPEP/USC/CFR sources
+  qwen-patent-creator status                   # Show MPEP installation status
+  qwen-patent-creator health                   # System health check
+  qwen-patent-creator verify-config            # Verify the client's MCP configuration
+  qwen-patent-creator serve                    # Run the MCP server
 
-  patent-creator rebuild-index            # Rebuild MPEP index
-  patent-creator download-mpep            # Download MPEP PDFs only
-  patent-creator download-all             # Download all sources (MPEP + 35 USC + 37 CFR)
-  patent-creator check-bigquery           # Check BigQuery connection
+  qwen-patent-creator rebuild-index            # Rebuild MPEP index
+  qwen-patent-creator download-mpep            # Download MPEP PDFs only
+  qwen-patent-creator download-all             # Download all sources (MPEP + 35 USC + 37 CFR)
+  qwen-patent-creator check-bigquery           # Check BigQuery connection
 
-For more information: https://github.com/RobThePCGuy/Claude-Patent-Creator
+For more information: https://github.com/DanielTillett/Qwen-Patent-Creator
         """),
     )
 
-    parser.add_argument("--version", action="version", version=f"patent-creator {_own_version(__file__)}")
+    parser.add_argument("--version", action="version", version=f"qwen-patent-creator {_own_version(__file__)}")
 
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
 
@@ -1598,6 +1703,25 @@ For more information: https://github.com/RobThePCGuy/Claude-Patent-Creator
         "--non-interactive",
         action="store_true",
         help="Skip interactive prompts (for CI/plugin use)",
+    )
+    setup_parser.add_argument(
+        "--client",
+        default="auto",
+        type=str.lower,
+        choices=sorted(registration.CLIENTS + ("auto",)),
+        help="Register the MCP server with this client (claude, opencode, qwen-code, none; "
+        "auto picks the first installed CLI)",
+    )
+    setup_parser.add_argument(
+        "--scope",
+        default="user",
+        type=str.lower,
+        choices=sorted(registration.SCOPES),
+        help="Registration scope: user (default) or project, for clients configured by file",
+    )
+    setup_parser.add_argument(
+        "--project-dir",
+        help="Project a --scope project registration writes to (default: the current directory)",
     )
     setup_parser.set_defaults(func=setup_command)
 
@@ -1637,7 +1761,25 @@ For more information: https://github.com/RobThePCGuy/Claude-Patent-Creator
 
     # Verify config command
     verify_parser = subparsers.add_parser(
-        "verify-config", help="Verify Claude Code MCP configuration"
+        "verify-config", help="Verify the MCP configuration the selected client reads"
+    )
+    verify_parser.add_argument(
+        "--client",
+        default="auto",
+        type=str.lower,
+        choices=sorted(registration.CLIENTS + ("auto",)),
+        help="Client to verify (claude, opencode, qwen-code, none; auto picks the first installed CLI)",
+    )
+    verify_parser.add_argument(
+        "--scope",
+        default="user",
+        type=str.lower,
+        choices=sorted(registration.SCOPES),
+        help="Which scope to read: user (default) or project",
+    )
+    verify_parser.add_argument(
+        "--project-dir",
+        help="Project whose configuration is read (default: the current directory)",
     )
     verify_parser.set_defaults(func=verify_config_command)
 
@@ -1667,7 +1809,15 @@ For more information: https://github.com/RobThePCGuy/Claude-Patent-Creator
         func=config_path_command
     )
 
-    # Download patents command
+    return parser
+
+
+def main():
+    """
+    Main CLI entry point
+    """
+    parser = build_parser()
+
     args = parser.parse_args()
 
     if not args.command:
@@ -1684,9 +1834,9 @@ For more information: https://github.com/RobThePCGuy/Claude-Patent-Creator
         print(
             _render(
                 "    Reinstall them with: pip install --upgrade "
-                "git+https://github.com/RobThePCGuy/Claude-Patent-Creator.git\n"
+                "git+https://github.com/DanielTillett/Qwen-Patent-Creator.git\n"
                 "    (from a source checkout: pip install -e .), then retry.\n"
-                "    ('patent-creator config' works without them.)"
+                "    ('qwen-patent-creator config' works without them.)"
             ),
             file=sys.stderr,
         )
